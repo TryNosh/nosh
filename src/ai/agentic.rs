@@ -44,7 +44,7 @@ impl Default for AgenticConfig {
     fn default() -> Self {
         Self {
             max_iterations: 10,
-            timeout_seconds: 60,
+            timeout_seconds: 0, // 0 = no timeout
         }
     }
 }
@@ -78,12 +78,15 @@ impl AgenticSession {
             ));
         }
 
-        let elapsed = self.start_time.elapsed();
-        if elapsed > Duration::from_secs(self.config.timeout_seconds) {
-            return Err(format!(
-                "Timeout after {} seconds",
-                self.config.timeout_seconds
-            ));
+        // Check timeout (0 = no timeout)
+        if self.config.timeout_seconds > 0 {
+            let elapsed = self.start_time.elapsed();
+            if elapsed > Duration::from_secs(self.config.timeout_seconds) {
+                return Err(format!(
+                    "Timeout after {} seconds",
+                    self.config.timeout_seconds
+                ));
+            }
         }
 
         Ok(())
@@ -165,7 +168,7 @@ mod tests {
     fn test_session_limits() {
         let config = AgenticConfig {
             max_iterations: 3,
-            timeout_seconds: 60,
+            timeout_seconds: 0,
         };
         let mut session = AgenticSession::new(config);
 

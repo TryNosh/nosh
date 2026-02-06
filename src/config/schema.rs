@@ -77,7 +77,7 @@ impl Default for AiConfig {
             include_output: false,
             agentic_enabled: true,
             max_iterations: 10,
-            timeout: 60,
+            timeout: 0, // 0 = no timeout
         }
     }
 }
