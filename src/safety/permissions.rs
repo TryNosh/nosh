@@ -115,6 +115,7 @@ impl PermissionStore {
 
     /// Check if a command pattern is allowed in a specific directory.
     /// This allows for permissions like "rm is allowed in /path/to/project".
+    #[cfg(test)]
     pub fn is_command_allowed_in_directory(
         &self,
         command: &str,

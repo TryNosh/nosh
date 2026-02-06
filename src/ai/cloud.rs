@@ -87,7 +87,8 @@ struct AgenticResponse {
     reasoning: Option<String>,
     /// Final message (if action is final_response)
     message: Option<String>,
-    /// Tokens remaining
+    // tokens_remaining is sent by server but not currently used
+    #[allow(dead_code)]
     tokens_remaining: Option<i32>,
 }
 

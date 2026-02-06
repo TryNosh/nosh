@@ -107,11 +107,6 @@ impl AgenticSession {
         self.history.push((command.to_string(), output.to_string()));
     }
 
-    /// Get execution history for context.
-    pub fn history(&self) -> &[(String, String)] {
-        &self.history
-    }
-
     /// Check if a command is allowed to run.
     pub fn check_permission(
         &self,
@@ -184,7 +179,7 @@ mod tests {
         let mut session = AgenticSession::new(AgenticConfig::default());
         session.record_execution("ls -la", "file1.txt\nfile2.txt");
 
-        assert_eq!(session.history().len(), 1);
-        assert_eq!(session.history()[0].0, "ls -la");
+        assert_eq!(session.history.len(), 1);
+        assert_eq!(session.history[0].0, "ls -la");
     }
 }

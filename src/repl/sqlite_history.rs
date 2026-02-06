@@ -49,11 +49,6 @@ impl SqliteRustylineHistory {
         })
     }
 
-    /// Get the underlying database for direct operations.
-    pub fn db(&self) -> &SqliteHistory {
-        &self.db
-    }
-
     /// Ensure we have entries loaded up to the given index.
     fn ensure_loaded(&self, index: usize) {
         let session_len = self.session_entries.borrow().len();

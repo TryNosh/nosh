@@ -21,24 +21,20 @@ pub struct Exchange {
 pub struct ConversationContext {
     exchanges: VecDeque<Exchange>,
     max_exchanges: usize,
-    include_output: bool,
-    output_max_chars: usize,
 }
 
 impl Default for ConversationContext {
     fn default() -> Self {
-        Self::new(10, false)
+        Self::new(10)
     }
 }
 
 impl ConversationContext {
     /// Create a new context with specified limits.
-    pub fn new(max_exchanges: usize, include_output: bool) -> Self {
+    pub fn new(max_exchanges: usize) -> Self {
         Self {
             exchanges: VecDeque::with_capacity(max_exchanges),
             max_exchanges,
-            include_output,
-            output_max_chars: 500,
         }
     }
 
@@ -54,22 +50,6 @@ impl ConversationContext {
             self.exchanges.pop_front();
         }
         self.exchanges.push_back(exchange);
-    }
-
-    /// Update the last exchange with command output (if include_output is enabled).
-    pub fn add_output(&mut self, output: &str) {
-        if !self.include_output {
-            return;
-        }
-
-        if let Some(last) = self.exchanges.back_mut() {
-            let summary = if output.len() > self.output_max_chars {
-                format!("{}...", &output[..self.output_max_chars])
-            } else {
-                output.to_string()
-            };
-            last.output_summary = Some(summary);
-        }
     }
 
     /// Clear all context (e.g., on /clear command).
@@ -106,6 +86,7 @@ impl ConversationContext {
     }
 
     /// Get the number of exchanges stored.
+    #[cfg(test)]
     pub fn len(&self) -> usize {
         self.exchanges.len()
     }
@@ -122,14 +103,14 @@ mod tests {
 
     #[test]
     fn test_add_exchange() {
-        let mut ctx = ConversationContext::new(5, false);
+        let mut ctx = ConversationContext::new(5);
         ctx.add_exchange("list files", "ls -la");
         assert_eq!(ctx.len(), 1);
     }
 
     #[test]
     fn test_max_exchanges_limit() {
-        let mut ctx = ConversationContext::new(2, false);
+        let mut ctx = ConversationContext::new(2);
         ctx.add_exchange("one", "cmd1");
         ctx.add_exchange("two", "cmd2");
         ctx.add_exchange("three", "cmd3");
@@ -144,7 +125,7 @@ mod tests {
 
     #[test]
     fn test_format_for_prompt() {
-        let mut ctx = ConversationContext::new(5, false);
+        let mut ctx = ConversationContext::new(5);
         ctx.add_exchange("find large files", "find . -size +100M");
         ctx.add_exchange("show rust ones", "find . -size +100M -name '*.rs'");
 
@@ -155,28 +136,8 @@ mod tests {
     }
 
     #[test]
-    fn test_output_included_when_enabled() {
-        let mut ctx = ConversationContext::new(5, true);
-        ctx.add_exchange("list files", "ls");
-        ctx.add_output("file1.txt\nfile2.txt");
-
-        let formatted = ctx.format_for_prompt();
-        assert!(formatted.contains("Output: file1.txt"));
-    }
-
-    #[test]
-    fn test_output_not_included_when_disabled() {
-        let mut ctx = ConversationContext::new(5, false);
-        ctx.add_exchange("list files", "ls");
-        ctx.add_output("file1.txt\nfile2.txt");
-
-        let formatted = ctx.format_for_prompt();
-        assert!(!formatted.contains("Output:"));
-    }
-
-    #[test]
     fn test_clear() {
-        let mut ctx = ConversationContext::new(5, false);
+        let mut ctx = ConversationContext::new(5);
         ctx.add_exchange("test", "cmd");
         ctx.clear();
         assert!(ctx.is_empty());

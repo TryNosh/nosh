@@ -24,13 +24,11 @@ pub struct AiConfig {
     pub ollama_url: String,
     /// Number of recent exchanges to include as context (default: 10)
     pub context_size: usize,
-    /// Include command output in context (uses more tokens)
-    pub include_output: bool,
     /// Enable agentic mode for investigative queries (cloud only)
     pub agentic_enabled: bool,
     /// Maximum command executions per agentic query
     pub max_iterations: usize,
-    /// Timeout in seconds for agentic queries
+    /// Timeout in seconds for agentic queries (0 = no timeout)
     pub timeout: u64,
 }
 
@@ -74,7 +72,6 @@ impl Default for AiConfig {
             model: "llama3.2".to_string(),
             ollama_url: "http://localhost:11434".to_string(),
             context_size: 10,
-            include_output: false,
             agentic_enabled: true,
             max_iterations: 10,
             timeout: 0, // 0 = no timeout

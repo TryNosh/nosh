@@ -111,6 +111,7 @@ impl History {
     }
 
     /// Get commands run in a specific directory.
+    #[allow(dead_code)]
     pub fn in_directory(&self, dir: &str, limit: usize) -> Result<Vec<String>> {
         let mut stmt = self.conn.prepare(
             "SELECT DISTINCT command FROM history
@@ -144,6 +145,7 @@ impl History {
     }
 
     /// Remove duplicate consecutive commands (keeps the most recent).
+    #[allow(dead_code)]
     pub fn deduplicate(&self) -> Result<usize> {
         let deleted = self.conn.execute(
             "DELETE FROM history WHERE id NOT IN (

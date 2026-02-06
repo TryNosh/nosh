@@ -117,10 +117,7 @@ async fn main() -> Result<()> {
     let mut shell = ShellSession::new().await?;
 
     // Create conversation context for AI
-    let mut ai_context = ConversationContext::new(
-        config.ai.context_size,
-        config.ai.include_output,
-    );
+    let mut ai_context = ConversationContext::new(config.ai.context_size);
 
     loop {
         let cwd = std::env::current_dir()
@@ -551,14 +548,14 @@ async fn main() -> Result<()> {
                             let permission =
                                 session.check_permission(&command, &cwd, &permissions);
 
-                            let (should_run, updated_perms) = match permission {
-                                CommandPermission::Allowed => (true, false),
+                            let should_run = match permission {
+                                CommandPermission::Allowed => true,
                                 CommandPermission::Blocked => {
                                     eprintln!(
                                         "\x1b[31m[Blocked]\x1b[0m AI requested blocked command: {}",
                                         command
                                     );
-                                    (false, false)
+                                    false
                                 }
                                 CommandPermission::NeedsApproval => {
                                     // Show the command and ask for permission
@@ -568,15 +565,15 @@ async fn main() -> Result<()> {
                                         command
                                     );
                                     match prompt_for_permission(&parsed)? {
-                                        PermissionChoice::AllowOnce => (true, false),
+                                        PermissionChoice::AllowOnce => true,
                                         PermissionChoice::AllowCommand => {
                                             permissions.allow_command(&parsed.info.command, true);
-                                            (true, true)
+                                            true
                                         }
                                         PermissionChoice::AllowSubcommand => {
                                             permissions
                                                 .allow_command(&parsed.info.command_pattern, true);
-                                            (true, true)
+                                            true
                                         }
                                         PermissionChoice::AllowCommandHere => {
                                             permissions.allow_command_in_directory(
@@ -584,15 +581,15 @@ async fn main() -> Result<()> {
                                                 &cwd,
                                                 true,
                                             );
-                                            (true, true)
+                                            true
                                         }
                                         PermissionChoice::AllowHere => {
                                             permissions.allow_directory(&cwd, true);
-                                            (true, true)
+                                            true
                                         }
                                         PermissionChoice::Deny => {
                                             println!("Command denied. Stopping agentic mode.");
-                                            (false, false)
+                                            false
                                         }
                                     }
                                 }
