@@ -7,6 +7,7 @@ use ai::OllamaClient;
 use anyhow::Result;
 use exec::execute_command;
 use repl::Repl;
+use safety::{parse_command, prompt_for_permission, PermissionChoice, RiskLevel};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -35,8 +36,39 @@ async fn main() -> Result<()> {
                 match ollama.translate(&line, &cwd).await {
                     Ok(command) => {
                         println!("⚡ {}", command);
-                        if let Err(e) = execute_command(&command) {
-                            eprintln!("Execution error: {}", e);
+
+                        // Parse and check safety
+                        let parsed = parse_command(&command);
+
+                        let should_execute = match parsed.risk_level {
+                            RiskLevel::Safe => true,
+                            RiskLevel::Blocked => {
+                                safety::prompt::print_blocked(&parsed)?;
+                                false
+                            }
+                            RiskLevel::Critical => {
+                                safety::prompt::print_critical_warning(&parsed)?
+                            }
+                            _ => {
+                                match prompt_for_permission(&parsed)? {
+                                    PermissionChoice::AllowOnce => true,
+                                    PermissionChoice::AllowCommand => {
+                                        // TODO: persist this
+                                        true
+                                    }
+                                    PermissionChoice::AllowHere => {
+                                        // TODO: persist this
+                                        true
+                                    }
+                                    PermissionChoice::Deny => false,
+                                }
+                            }
+                        };
+
+                        if should_execute {
+                            if let Err(e) = execute_command(&command) {
+                                eprintln!("Execution error: {}", e);
+                            }
                         }
                     }
                     Err(e) => {
