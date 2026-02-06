@@ -1,8 +1,10 @@
 mod ai;
+mod exec;
 mod repl;
 
 use ai::OllamaClient;
 use anyhow::Result;
+use exec::execute_command;
 use repl::Repl;
 
 #[tokio::main]
@@ -32,6 +34,9 @@ async fn main() -> Result<()> {
                 match ollama.translate(&line, &cwd).await {
                     Ok(command) => {
                         println!("⚡ {}", command);
+                        if let Err(e) = execute_command(&command) {
+                            eprintln!("Execution error: {}", e);
+                        }
                     }
                     Err(e) => {
                         eprintln!("AI error: {}", e);
