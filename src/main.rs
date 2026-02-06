@@ -24,7 +24,7 @@ async fn main() -> Result<()> {
 
     // Run onboarding if needed (before loading config, since onboarding creates it)
     if needs_onboarding(&creds) {
-        match run_onboarding()? {
+        match run_onboarding().await? {
             OnboardingChoice::Quit => return Ok(()),
             OnboardingChoice::Ollama => {}
             OnboardingChoice::Cloud => {

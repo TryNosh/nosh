@@ -1,7 +1,10 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use crossterm::style::{Color, ResetColor, SetForegroundColor};
 use crossterm::ExecutableCommand;
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
 use std::io::{self, Write};
+use std::time::Duration;
 use crate::auth::Credentials;
 use crate::config::Config;
 
@@ -11,7 +14,36 @@ pub enum OnboardingChoice {
     Quit,
 }
 
-pub fn run_onboarding() -> Result<OnboardingChoice> {
+#[derive(Serialize)]
+struct DeviceAuthRequest {
+    email: String,
+}
+
+#[derive(Deserialize)]
+struct DeviceAuthResponse {
+    device_code: String,
+    #[allow(dead_code)]
+    verification_url: String,
+    #[allow(dead_code)]
+    expires_in: u32,
+}
+
+#[derive(Serialize)]
+struct DeviceTokenRequest {
+    device_code: String,
+}
+
+#[derive(Deserialize)]
+struct DeviceTokenResponse {
+    token: String,
+}
+
+#[derive(Deserialize)]
+struct ErrorResponse {
+    error: String,
+}
+
+pub async fn run_onboarding() -> Result<OnboardingChoice> {
     let mut stdout = io::stdout();
 
     stdout.execute(SetForegroundColor(Color::Cyan))?;
@@ -42,13 +74,13 @@ pub fn run_onboarding() -> Result<OnboardingChoice> {
             Ok(OnboardingChoice::Ollama)
         }
         "2" => {
-            setup_cloud()?;
+            setup_cloud().await?;
             Ok(OnboardingChoice::Cloud)
         }
         "q" | "Q" => Ok(OnboardingChoice::Quit),
         _ => {
             writeln!(stdout, "Invalid choice. Please try again.")?;
-            run_onboarding()
+            Box::pin(run_onboarding()).await
         }
     }
 }
@@ -84,8 +116,14 @@ fn setup_ollama() -> Result<()> {
     Ok(())
 }
 
-fn setup_cloud() -> Result<()> {
+fn get_cloud_url() -> String {
+    std::env::var("NOSH_CLOUD_URL").unwrap_or_else(|_| "https://nosh.sh/api".to_string())
+}
+
+async fn setup_cloud() -> Result<()> {
     let mut stdout = io::stdout();
+    let client = Client::new();
+    let base_url = get_cloud_url();
 
     writeln!(stdout)?;
     writeln!(stdout, "Setting up Nosh Cloud...")?;
@@ -99,42 +137,117 @@ fn setup_cloud() -> Result<()> {
 
     if !email.contains('@') {
         writeln!(stdout, "Invalid email. Please try again.")?;
-        return setup_cloud();
+        return Box::pin(setup_cloud()).await;
     }
 
     writeln!(stdout)?;
+    writeln!(stdout, "Sending magic link...")?;
+
+    // Start device auth flow
+    let response = client
+        .post(format!("{}/auth/device", base_url))
+        .json(&DeviceAuthRequest { email: email.clone() })
+        .send()
+        .await;
+
+    let device_code = match response {
+        Ok(resp) if resp.status().is_success() => {
+            let auth: DeviceAuthResponse = resp.json().await?;
+            auth.device_code
+        }
+        Ok(resp) => {
+            let error: ErrorResponse = resp.json().await.unwrap_or(ErrorResponse {
+                error: "Unknown error".to_string(),
+            });
+            return Err(anyhow!("Failed to start auth: {}", error.error));
+        }
+        Err(e) => {
+            // Server not available - fall back to manual token entry
+            writeln!(stdout)?;
+            stdout.execute(SetForegroundColor(Color::Yellow))?;
+            writeln!(stdout, "Could not connect to Nosh Cloud: {}", e)?;
+            stdout.execute(ResetColor)?;
+            writeln!(stdout, "Enter your token manually (get one from https://nosh.sh):")?;
+            write!(stdout, "Token: ")?;
+            stdout.flush()?;
+
+            let mut token = String::new();
+            io::stdin().read_line(&mut token)?;
+            let token = token.trim().to_string();
+
+            if token.is_empty() {
+                return Err(anyhow!("No token provided"));
+            }
+
+            save_cloud_credentials(&email, &token)?;
+            return Ok(());
+        }
+    };
+
+    writeln!(stdout)?;
+    stdout.execute(SetForegroundColor(Color::Green))?;
     writeln!(stdout, "Magic link sent! Check your inbox and click the link.")?;
-    writeln!(stdout, "Waiting for authentication...")?;
-
-    // TODO: Actually send magic link and poll for token
-    // For now, ask user to paste token
+    stdout.execute(ResetColor)?;
+    writeln!(stdout, "Waiting for you to click the link...")?;
     writeln!(stdout)?;
-    write!(stdout, "Paste your token: ")?;
-    stdout.flush()?;
 
-    let mut token = String::new();
-    io::stdin().read_line(&mut token)?;
-    let token = token.trim().to_string();
+    // Poll for token
+    let mut attempts = 0;
+    let max_attempts = 90; // 90 * 2 seconds = 3 minutes
 
-    if token.is_empty() {
-        writeln!(stdout, "No token provided. Please try again.")?;
-        return setup_cloud();
+    loop {
+        attempts += 1;
+        if attempts > max_attempts {
+            return Err(anyhow!("Authentication timed out. Please try again."));
+        }
+
+        tokio::time::sleep(Duration::from_secs(2)).await;
+
+        let response = client
+            .post(format!("{}/auth/device/token", base_url))
+            .json(&DeviceTokenRequest {
+                device_code: device_code.clone(),
+            })
+            .send()
+            .await?;
+
+        if response.status().is_success() {
+            let token_resp: DeviceTokenResponse = response.json().await?;
+            save_cloud_credentials(&email, &token_resp.token)?;
+
+            writeln!(stdout)?;
+            stdout.execute(SetForegroundColor(Color::Green))?;
+            writeln!(stdout, "Authenticated! You're ready to use nosh.")?;
+            stdout.execute(ResetColor)?;
+            writeln!(stdout)?;
+            return Ok(());
+        }
+
+        // 428 means authorization_pending - keep polling
+        if response.status().as_u16() != 428 {
+            let error: ErrorResponse = response.json().await.unwrap_or(ErrorResponse {
+                error: "Unknown error".to_string(),
+            });
+            return Err(anyhow!("Authentication failed: {}", error.error));
+        }
+
+        // Show a simple progress indicator
+        if attempts % 5 == 0 {
+            write!(stdout, ".")?;
+            stdout.flush()?;
+        }
     }
+}
 
+fn save_cloud_credentials(email: &str, token: &str) -> Result<()> {
     let mut creds = Credentials::load().unwrap_or_default();
-    creds.token = Some(token);
-    creds.email = Some(email);
+    creds.token = Some(token.to_string());
+    creds.email = Some(email.to_string());
     creds.save()?;
 
     let mut config = Config::load().unwrap_or_default();
     config.ai.backend = "cloud".to_string();
     config.save()?;
-
-    writeln!(stdout)?;
-    stdout.execute(SetForegroundColor(Color::Green))?;
-    writeln!(stdout, "Authenticated! You're ready to use nosh.")?;
-    stdout.execute(ResetColor)?;
-    writeln!(stdout)?;
 
     Ok(())
 }
