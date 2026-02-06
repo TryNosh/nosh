@@ -1,4 +1,5 @@
 mod ai;
+mod auth;
 mod config;
 mod exec;
 mod repl;
