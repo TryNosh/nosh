@@ -9,7 +9,10 @@ mod plugins;
 mod repl;
 mod safety;
 
-use ai::{CloudClient, ConversationContext, OllamaClient};
+use ai::{
+    AgenticConfig, AgenticSession, AgenticStep, CloudClient, CommandPermission,
+    ConversationContext, OllamaClient, format_step_output,
+};
 use plugins::builtins::{install_builtins, ConfigFile, update_config, config_needs_update};
 use dialoguer::{theme::ColorfulTheme, Select, MultiSelect};
 
@@ -151,7 +154,8 @@ async fn main() -> Result<()> {
                 println!("  exit      Quit nosh");
                 println!("\nUsage:");
                 println!("  command   Run command directly");
-                println!("  ?query    Translate natural language via AI\n");
+                println!("  ?query    Translate natural language via AI");
+                println!("  ??query   Agentic mode - AI investigates before answering\n");
                 continue;
             }
             Some(line) if line == "/clear" => {
@@ -461,6 +465,188 @@ async fn main() -> Result<()> {
                 // Unknown built-in command
                 eprintln!("Unknown command: {}", line);
                 eprintln!("Type /help for available commands.");
+                continue;
+            }
+            Some(line) if line.starts_with("??") => {
+                // Agentic mode - AI investigates before answering
+                let input = line[2..].trim();
+                if input.is_empty() {
+                    continue;
+                }
+
+                // Agentic mode requires cloud backend
+                if config.ai.backend != "cloud" {
+                    eprintln!("Agentic mode requires cloud backend.");
+                    eprintln!("Run /setup to switch to Nosh Cloud, or use ? for simple translation.");
+                    continue;
+                }
+
+                if !config.ai.agentic_enabled {
+                    eprintln!("Agentic mode is disabled. Enable it in config.toml:");
+                    eprintln!("  [ai]");
+                    eprintln!("  agentic_enabled = true");
+                    continue;
+                }
+
+                let token = match &creds.token {
+                    Some(t) => t.clone(),
+                    None => {
+                        eprintln!("Not authenticated. Run /setup to sign in.");
+                        continue;
+                    }
+                };
+
+                let client = CloudClient::new(&token);
+                let agentic_config = AgenticConfig {
+                    max_iterations: config.ai.max_iterations,
+                    timeout_seconds: config.ai.timeout,
+                };
+                let mut session = AgenticSession::new(agentic_config);
+                let mut executions: Vec<(String, String, i32)> = Vec::new();
+
+                println!("\n\x1b[36m[Agentic Mode]\x1b[0m Investigating: {}\n", input);
+
+                // Agentic loop
+                loop {
+                    // Check limits
+                    if let Err(msg) = session.check_limits() {
+                        eprintln!("\x1b[33m[Limit reached]\x1b[0m {}", msg);
+                        break;
+                    }
+
+                    // Get next step from AI
+                    let step = match client
+                        .agentic_step(input, &cwd, Some(&ai_context), &executions)
+                        .await
+                    {
+                        Ok(s) => s,
+                        Err(e) => {
+                            eprintln!("AI error: {}", e);
+                            break;
+                        }
+                    };
+
+                    session.increment();
+
+                    match step {
+                        AgenticStep::RunCommand { command, reasoning } => {
+                            if let Some(reason) = reasoning {
+                                println!("\x1b[90m  → {}\x1b[0m", reason);
+                            }
+
+                            // Check permissions
+                            let permission =
+                                session.check_permission(&command, &cwd, &permissions);
+
+                            let (should_run, updated_perms) = match permission {
+                                CommandPermission::Allowed => (true, false),
+                                CommandPermission::Blocked => {
+                                    eprintln!(
+                                        "\x1b[31m[Blocked]\x1b[0m AI requested blocked command: {}",
+                                        command
+                                    );
+                                    (false, false)
+                                }
+                                CommandPermission::NeedsApproval => {
+                                    // Show the command and ask for permission
+                                    let parsed = parse_command(&command);
+                                    println!(
+                                        "\n\x1b[33m[Approval needed]\x1b[0m AI wants to run: {}",
+                                        command
+                                    );
+                                    match prompt_for_permission(&parsed)? {
+                                        PermissionChoice::AllowOnce => (true, false),
+                                        PermissionChoice::AllowCommand => {
+                                            permissions.allow_command(&parsed.info.command, true);
+                                            (true, true)
+                                        }
+                                        PermissionChoice::AllowSubcommand => {
+                                            permissions
+                                                .allow_command(&parsed.info.command_pattern, true);
+                                            (true, true)
+                                        }
+                                        PermissionChoice::AllowCommandHere => {
+                                            permissions.allow_command_in_directory(
+                                                &parsed.info.command_pattern,
+                                                &cwd,
+                                                true,
+                                            );
+                                            (true, true)
+                                        }
+                                        PermissionChoice::AllowHere => {
+                                            permissions.allow_directory(&cwd, true);
+                                            (true, true)
+                                        }
+                                        PermissionChoice::Deny => {
+                                            println!("Command denied. Stopping agentic mode.");
+                                            (false, false)
+                                        }
+                                    }
+                                }
+                            };
+
+                            if !should_run {
+                                // Send empty result to AI so it can try something else
+                                executions.push((
+                                    command,
+                                    "[Permission denied]".to_string(),
+                                    1,
+                                ));
+                                continue;
+                            }
+
+                            // Execute the command and capture output
+                            println!(
+                                "{}",
+                                format_step_output(&command, "", session.iterations())
+                            );
+
+                            // Capture output by running through shell
+                            let output = match std::process::Command::new("sh")
+                                .arg("-c")
+                                .arg(&command)
+                                .current_dir(&cwd)
+                                .output()
+                            {
+                                Ok(out) => {
+                                    let stdout = String::from_utf8_lossy(&out.stdout);
+                                    let stderr = String::from_utf8_lossy(&out.stderr);
+                                    let combined = if stderr.is_empty() {
+                                        stdout.to_string()
+                                    } else {
+                                        format!("{}\n{}", stdout, stderr)
+                                    };
+
+                                    // Print truncated output
+                                    let display = if combined.len() > 1000 {
+                                        format!("{}...", &combined[..1000])
+                                    } else {
+                                        combined.clone()
+                                    };
+                                    if !display.trim().is_empty() {
+                                        println!("{}", display);
+                                    }
+
+                                    (combined, out.status.code().unwrap_or(1))
+                                }
+                                Err(e) => (format!("Error: {}", e), 1),
+                            };
+
+                            session.record_execution(&command, &output.0);
+                            executions.push((command, output.0, output.1));
+                        }
+                        AgenticStep::FinalResponse { message } => {
+                            println!("\n\x1b[32m[Result]\x1b[0m {}\n", message);
+                            // Record in context
+                            ai_context.add_exchange(input, &format!("[agentic] {}", message));
+                            break;
+                        }
+                        AgenticStep::Error { message } => {
+                            eprintln!("\x1b[31m[Error]\x1b[0m {}", message);
+                            break;
+                        }
+                    }
+                }
                 continue;
             }
             Some(line) if line.starts_with('?') => {

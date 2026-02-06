@@ -2,6 +2,7 @@ use anyhow::{anyhow, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
+use super::agentic::AgenticStep;
 use super::context::ConversationContext;
 
 #[derive(Deserialize)]
@@ -56,6 +57,38 @@ struct ErrorResponse {
     #[allow(dead_code)]
     code: Option<String>,
     message: Option<String>,
+}
+
+// Agentic mode types
+#[derive(Serialize)]
+struct AgenticExecution {
+    command: String,
+    output: String,
+    exit_code: i32,
+}
+
+#[derive(Serialize)]
+struct AgenticRequest {
+    input: String,
+    cwd: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    context: Option<Vec<ContextExchange>>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    executions: Vec<AgenticExecution>,
+}
+
+#[derive(Deserialize)]
+struct AgenticResponse {
+    /// "run_command" or "final_response"
+    action: String,
+    /// Command to run (if action is run_command)
+    command: Option<String>,
+    /// AI's reasoning for this step
+    reasoning: Option<String>,
+    /// Final message (if action is final_response)
+    message: Option<String>,
+    /// Tokens remaining
+    tokens_remaining: Option<i32>,
 }
 
 pub struct CloudClient {
@@ -238,5 +271,96 @@ impl CloudClient {
 
         let result: PortalResponse = response.json().await?;
         Ok(result.url)
+    }
+
+    /// Send an agentic request and get the next step.
+    ///
+    /// The AI will either request a command to run or provide a final response.
+    pub async fn agentic_step(
+        &self,
+        input: &str,
+        cwd: &str,
+        context: Option<&ConversationContext>,
+        executions: &[(String, String, i32)], // (command, output, exit_code)
+    ) -> Result<AgenticStep> {
+        // Convert context to API format
+        let context_exchanges = context.filter(|c| !c.is_empty()).map(|c| {
+            c.exchanges()
+                .map(|e| ContextExchange {
+                    user_input: e.user_input.clone(),
+                    ai_command: e.ai_command.clone(),
+                    output_summary: e.output_summary.clone(),
+                })
+                .collect()
+        });
+
+        // Convert executions to API format
+        let exec_list: Vec<AgenticExecution> = executions
+            .iter()
+            .map(|(cmd, output, code)| AgenticExecution {
+                command: cmd.clone(),
+                output: output.clone(),
+                exit_code: *code,
+            })
+            .collect();
+
+        let request = AgenticRequest {
+            input: input.to_string(),
+            cwd: cwd.to_string(),
+            context: context_exchanges,
+            executions: exec_list,
+        };
+
+        let response = self
+            .client
+            .post(format!("{}/ai/agentic", self.base_url))
+            .header("Authorization", format!("Bearer {}", self.token))
+            .json(&request)
+            .send()
+            .await?;
+
+        if response.status() == 402 {
+            let error: ErrorResponse = response.json().await.unwrap_or(ErrorResponse {
+                error: "Out of tokens".to_string(),
+                code: None,
+                message: Some("Run /buy to get more tokens".to_string()),
+            });
+            let msg = error
+                .message
+                .unwrap_or_else(|| "Run /buy to get more tokens".to_string());
+            return Ok(AgenticStep::Error {
+                message: format!("Out of tokens. {}", msg),
+            });
+        }
+
+        if !response.status().is_success() {
+            let error: ErrorResponse = response.json().await?;
+            return Ok(AgenticStep::Error {
+                message: error.error,
+            });
+        }
+
+        let result: AgenticResponse = response.json().await?;
+
+        match result.action.as_str() {
+            "run_command" => {
+                if let Some(command) = result.command {
+                    Ok(AgenticStep::RunCommand {
+                        command,
+                        reasoning: result.reasoning,
+                    })
+                } else {
+                    Ok(AgenticStep::Error {
+                        message: "AI requested run_command but no command provided".to_string(),
+                    })
+                }
+            }
+            "final_response" => Ok(AgenticStep::FinalResponse {
+                message: result.message.unwrap_or_default(),
+            }),
+            other => Ok(AgenticStep::Error {
+                message: format!("Unknown action: {}", other),
+            }),
+        }
     }
 }
