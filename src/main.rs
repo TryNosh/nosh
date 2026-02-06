@@ -1,10 +1,12 @@
 mod ai;
+mod config;
 mod exec;
 mod repl;
 mod safety;
 
 use ai::OllamaClient;
 use anyhow::Result;
+use config::Config;
 use exec::execute_command;
 use repl::Repl;
 use safety::{parse_command, prompt_for_permission, PermissionChoice, PermissionStore, RiskLevel};
@@ -13,10 +15,11 @@ use safety::{parse_command, prompt_for_permission, PermissionChoice, PermissionS
 async fn main() -> Result<()> {
     println!("nosh v{}", env!("CARGO_PKG_VERSION"));
 
-    let ollama = OllamaClient::new("llama3.2");
+    let config = Config::load().unwrap_or_default();
+    let ollama = OllamaClient::new(&config.ai.model);
     let mut permissions = PermissionStore::load().unwrap_or_default();
 
-    if !ollama.check_available().await {
+    if config.ai.backend == "ollama" && !ollama.check_available().await {
         eprintln!("Warning: Ollama not available at localhost:11434");
         eprintln!("Start Ollama or configure a different backend.\n");
     }
@@ -36,7 +39,9 @@ async fn main() -> Result<()> {
             Some(line) => {
                 match ollama.translate(&line, &cwd).await {
                     Ok(command) => {
-                        println!("⚡ {}", command);
+                        if config.behavior.show_command {
+                            println!("⚡ {}", command);
+                        }
 
                         let parsed = parse_command(&command);
 
@@ -50,7 +55,6 @@ async fn main() -> Result<()> {
                                 safety::prompt::print_critical_warning(&parsed)?
                             }
                             _ => {
-                                // Check if already permitted
                                 if permissions.is_command_allowed(&parsed.info.command) {
                                     true
                                 } else if permissions.is_directory_allowed(&cwd) {
