@@ -1,7 +1,8 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+
+use crate::paths;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -9,6 +10,7 @@ pub struct Config {
     pub ai: AiConfig,
     pub behavior: BehaviorConfig,
     pub prompt: PromptConfig,
+    pub history: HistoryConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,12 +38,21 @@ pub struct PromptConfig {
     pub theme: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct HistoryConfig {
+    /// Number of recent commands to load on startup for arrow-key navigation.
+    /// Full history is always available in SQLite for search.
+    pub load_count: usize,
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
             ai: AiConfig::default(),
             behavior: BehaviorConfig::default(),
             prompt: PromptConfig::default(),
+            history: HistoryConfig::default(),
         }
     }
 }
@@ -72,14 +83,22 @@ impl Default for PromptConfig {
     }
 }
 
+impl Default for HistoryConfig {
+    fn default() -> Self {
+        Self {
+            load_count: 200,
+        }
+    }
+}
+
 impl Config {
     /// Check if config file exists (for determining if onboarding is needed)
     pub fn exists() -> bool {
-        Self::config_path().exists()
+        paths::config_file().exists()
     }
 
     pub fn load() -> Result<Self> {
-        let path = Self::config_path();
+        let path = paths::config_file();
 
         if path.exists() {
             let content = fs::read_to_string(&path)?;
@@ -92,19 +111,12 @@ impl Config {
     }
 
     pub fn save(&self) -> Result<()> {
-        let path = Self::config_path();
+        let path = paths::config_file();
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
         let content = toml::to_string_pretty(self)?;
         fs::write(&path, content)?;
         Ok(())
-    }
-
-    fn config_path() -> PathBuf {
-        dirs::config_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("nosh")
-            .join("config.toml")
     }
 }

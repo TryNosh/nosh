@@ -33,9 +33,16 @@ pub fn credentials_file() -> PathBuf {
     nosh_config_dir().join("credentials.toml")
 }
 
-/// Returns the path to the command history file.
+/// Returns the path to the command history database.
+/// `~/.config/nosh/history.db`
+pub fn history_db() -> PathBuf {
+    nosh_config_dir().join("history.db")
+}
+
+/// Returns the path to the legacy history file (for migration).
 /// `~/.config/nosh/history`
-pub fn history_file() -> PathBuf {
+#[allow(dead_code)]
+pub fn history_file_legacy() -> PathBuf {
     nosh_config_dir().join("history")
 }
 

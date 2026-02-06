@@ -1,25 +1,32 @@
 use anyhow::Result;
 use rustyline::error::ReadlineError;
-use rustyline::DefaultEditor;
-use std::path::PathBuf;
+use rustyline::history::History;
+use rustyline::{Config, Editor};
 use std::time::Instant;
 
+use super::sqlite_history::SqliteRustylineHistory;
 use crate::paths;
 use crate::plugins::loader::PluginManager;
 use crate::plugins::theme::Theme;
 
 pub struct Repl {
-    editor: DefaultEditor,
-    history_path: PathBuf,
+    editor: Editor<(), SqliteRustylineHistory>,
     plugin_manager: PluginManager,
     theme: Theme,
     last_command_start: Option<Instant>,
 }
 
 impl Repl {
-    pub fn new(theme_name: &str) -> Result<Self> {
-        let editor = DefaultEditor::new()?;
-        let history_path = paths::history_file();
+    pub fn new(theme_name: &str, _history_load_count: Option<usize>) -> Result<Self> {
+        // Create SQLite-backed history with lazy loading
+        let history = SqliteRustylineHistory::open(&paths::history_db())
+            .map_err(|e| anyhow::anyhow!("Failed to open history: {}", e))?;
+
+        // Configure rustyline with our SQLite history
+        let config = Config::builder()
+            .auto_add_history(false) // We handle this manually
+            .build();
+        let editor = Editor::with_history(config, history)?;
 
         // Load plugins and theme
         let mut plugin_manager = PluginManager::new();
@@ -29,22 +36,22 @@ impl Repl {
 
         Ok(Self {
             editor,
-            history_path,
             plugin_manager,
             theme,
             last_command_start: None,
         })
     }
 
+    /// No-op: SQLite history loads lazily on demand.
     pub fn load_history(&mut self) {
-        let _ = self.editor.load_history(&self.history_path);
+        // History is loaded lazily as user navigates with arrow keys.
+        // No upfront loading needed.
     }
 
+    /// No-op: SQLite history is saved in real-time.
     pub fn save_history(&mut self) {
-        if let Some(parent) = self.history_path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        let _ = self.editor.save_history(&self.history_path);
+        // History is saved immediately on each command.
+        // Nothing to do here.
     }
 
     /// Mark the start of a command execution.
@@ -74,7 +81,8 @@ impl Repl {
             Ok(line) => {
                 let line = line.trim().to_string();
                 if !line.is_empty() {
-                    let _ = self.editor.add_history_entry(&line);
+                    // Add to history (SQLite handles persistence)
+                    let _ = self.editor.history_mut().add(&line);
                 }
                 Ok(Some(line))
             }
