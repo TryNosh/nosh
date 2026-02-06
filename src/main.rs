@@ -9,7 +9,7 @@ mod plugins;
 mod repl;
 mod safety;
 
-use ai::{CloudClient, OllamaClient};
+use ai::{CloudClient, ConversationContext, OllamaClient};
 use plugins::builtins::{install_builtins, ConfigFile, update_config, config_needs_update};
 use dialoguer::{theme::ColorfulTheme, Select, MultiSelect};
 
@@ -113,6 +113,12 @@ async fn main() -> Result<()> {
     // Create persistent shell session (brush-based bash interpreter)
     let mut shell = ShellSession::new().await?;
 
+    // Create conversation context for AI
+    let mut ai_context = ConversationContext::new(
+        config.ai.context_size,
+        config.ai.include_output,
+    );
+
     loop {
         let cwd = std::env::current_dir()
             .map(|p| p.display().to_string())
@@ -140,11 +146,17 @@ async fn main() -> Result<()> {
                 println!("  /usage    Show usage, balance, and manage subscription");
                 println!("  /buy      Buy tokens or subscribe to a plan");
                 println!("  /nosh     Manage nosh config files");
+                println!("  /clear    Clear AI conversation context");
                 println!("  /help     Show this help");
                 println!("  exit      Quit nosh");
                 println!("\nUsage:");
                 println!("  command   Run command directly");
                 println!("  ?query    Translate natural language via AI\n");
+                continue;
+            }
+            Some(line) if line == "/clear" => {
+                ai_context.clear();
+                println!("AI context cleared.");
                 continue;
             }
             Some(line) if line == "/usage" || line == "/tokens" || line == "/plan" => {
@@ -469,17 +481,17 @@ async fn main() -> Result<()> {
                 spinner.set_message("Thinking...");
                 spinner.enable_steady_tick(std::time::Duration::from_millis(80));
 
-                // AI translation
+                // AI translation with conversation context
                 let result = if config.ai.backend == "cloud" {
                     if let Some(token) = &creds.token {
                         let client = CloudClient::new(token);
-                        client.translate(input, &cwd).await.map(|(cmd, _)| cmd)
+                        client.translate(input, &cwd, Some(&ai_context)).await.map(|(cmd, _)| cmd)
                     } else {
                         Err(anyhow::anyhow!("Not authenticated"))
                     }
                 } else {
                     let client = OllamaClient::new(&config.ai.model, &config.ai.ollama_url);
-                    client.translate(input, &cwd).await
+                    client.translate(input, &cwd, Some(&ai_context)).await
                 };
 
                 spinner.finish_and_clear();
@@ -487,6 +499,8 @@ async fn main() -> Result<()> {
                 let command = match result {
                     Ok(cmd) => {
                         println!("⚡ {}", cmd);
+                        // Record exchange in context (before execution, in case it fails)
+                        ai_context.add_exchange(input, &cmd);
                         cmd
                     }
                     Err(e) => {

@@ -2,6 +2,8 @@ use anyhow::{anyhow, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
+use super::context::ConversationContext;
+
 #[derive(Deserialize)]
 pub struct Usage {
     pub subscription_balance: i32,
@@ -25,9 +27,19 @@ pub struct PlanInfo {
 }
 
 #[derive(Serialize)]
+struct ContextExchange {
+    user_input: String,
+    ai_command: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    output_summary: Option<String>,
+}
+
+#[derive(Serialize)]
 struct CompleteRequest {
     input: String,
     cwd: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    context: Option<Vec<ContextExchange>>,
 }
 
 #[derive(Deserialize)]
@@ -62,10 +74,27 @@ impl CloudClient {
         }
     }
 
-    pub async fn translate(&self, input: &str, cwd: &str) -> Result<(String, i32)> {
+    pub async fn translate(
+        &self,
+        input: &str,
+        cwd: &str,
+        context: Option<&ConversationContext>,
+    ) -> Result<(String, i32)> {
+        // Convert context to API format
+        let context_exchanges = context.filter(|c| !c.is_empty()).map(|c| {
+            c.exchanges()
+                .map(|e| ContextExchange {
+                    user_input: e.user_input.clone(),
+                    ai_command: e.ai_command.clone(),
+                    output_summary: e.output_summary.clone(),
+                })
+                .collect()
+        });
+
         let request = CompleteRequest {
             input: input.to_string(),
             cwd: cwd.to_string(),
+            context: context_exchanges,
         };
 
         let response = self

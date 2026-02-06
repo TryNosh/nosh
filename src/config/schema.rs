@@ -22,6 +22,10 @@ pub struct AiConfig {
     pub model: String,
     /// Ollama API base URL
     pub ollama_url: String,
+    /// Number of recent exchanges to include as context (default: 10)
+    pub context_size: usize,
+    /// Include command output in context (uses more tokens)
+    pub include_output: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -63,6 +67,8 @@ impl Default for AiConfig {
             backend: "ollama".to_string(),
             model: "llama3.2".to_string(),
             ollama_url: "http://localhost:11434".to_string(),
+            context_size: 10,
+            include_output: false,
         }
     }
 }
