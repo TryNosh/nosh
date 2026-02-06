@@ -2,13 +2,16 @@ mod ai;
 mod auth;
 mod config;
 mod exec;
+mod onboarding;
 mod repl;
 mod safety;
 
-use ai::OllamaClient;
+use ai::{CloudClient, OllamaClient};
 use anyhow::Result;
+use auth::Credentials;
 use config::Config;
 use exec::execute_command;
+use onboarding::{needs_onboarding, run_onboarding, OnboardingChoice};
 use repl::Repl;
 use safety::{parse_command, prompt_for_permission, PermissionChoice, PermissionStore, RiskLevel};
 
@@ -16,13 +19,31 @@ use safety::{parse_command, prompt_for_permission, PermissionChoice, PermissionS
 async fn main() -> Result<()> {
     println!("nosh v{}", env!("CARGO_PKG_VERSION"));
 
-    let config = Config::load().unwrap_or_default();
-    let ollama = OllamaClient::new(&config.ai.model);
+    let mut config = Config::load().unwrap_or_default();
+    let mut creds = Credentials::load().unwrap_or_default();
     let mut permissions = PermissionStore::load().unwrap_or_default();
 
-    if config.ai.backend == "ollama" && !ollama.check_available().await {
-        eprintln!("Warning: Ollama not available at localhost:11434");
-        eprintln!("Start Ollama or configure a different backend.\n");
+    // Run onboarding if needed
+    if needs_onboarding(&config, &creds) {
+        match run_onboarding()? {
+            OnboardingChoice::Quit => return Ok(()),
+            OnboardingChoice::Ollama => {
+                config = Config::load().unwrap_or_default();
+            }
+            OnboardingChoice::Cloud => {
+                config = Config::load().unwrap_or_default();
+                creds = Credentials::load().unwrap_or_default();
+            }
+        }
+    }
+
+    // Check Ollama availability if using it
+    if config.ai.backend == "ollama" {
+        let ollama = OllamaClient::new(&config.ai.model);
+        if !ollama.check_available().await {
+            eprintln!("Warning: Ollama not available at localhost:11434");
+            eprintln!("Start Ollama or run `nosh --setup` to reconfigure.\n");
+        }
     }
 
     println!("Type 'exit' to quit.\n");
@@ -38,7 +59,19 @@ async fn main() -> Result<()> {
         match repl.readline()? {
             Some(line) if line == "exit" || line == "quit" => break,
             Some(line) => {
-                match ollama.translate(&line, &cwd).await {
+                let command_result = if config.ai.backend == "cloud" {
+                    if let Some(token) = &creds.token {
+                        let client = CloudClient::new(token);
+                        client.translate(&line, &cwd).await.map(|(cmd, _)| cmd)
+                    } else {
+                        Err(anyhow::anyhow!("Not authenticated"))
+                    }
+                } else {
+                    let client = OllamaClient::new(&config.ai.model);
+                    client.translate(&line, &cwd).await
+                };
+
+                match command_result {
                     Ok(command) => {
                         if config.behavior.show_command {
                             println!("⚡ {}", command);
