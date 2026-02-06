@@ -7,13 +7,14 @@ use ai::OllamaClient;
 use anyhow::Result;
 use exec::execute_command;
 use repl::Repl;
-use safety::{parse_command, prompt_for_permission, PermissionChoice, RiskLevel};
+use safety::{parse_command, prompt_for_permission, PermissionChoice, PermissionStore, RiskLevel};
 
 #[tokio::main]
 async fn main() -> Result<()> {
     println!("nosh v{}", env!("CARGO_PKG_VERSION"));
 
     let ollama = OllamaClient::new("llama3.2");
+    let mut permissions = PermissionStore::load().unwrap_or_default();
 
     if !ollama.check_available().await {
         eprintln!("Warning: Ollama not available at localhost:11434");
@@ -26,18 +27,17 @@ async fn main() -> Result<()> {
     repl.load_history();
 
     loop {
+        let cwd = std::env::current_dir()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|_| ".".to_string());
+
         match repl.readline()? {
             Some(line) if line == "exit" || line == "quit" => break,
             Some(line) => {
-                let cwd = std::env::current_dir()
-                    .map(|p| p.display().to_string())
-                    .unwrap_or_else(|_| ".".to_string());
-
                 match ollama.translate(&line, &cwd).await {
                     Ok(command) => {
                         println!("⚡ {}", command);
 
-                        // Parse and check safety
                         let parsed = parse_command(&command);
 
                         let should_execute = match parsed.risk_level {
@@ -50,17 +50,24 @@ async fn main() -> Result<()> {
                                 safety::prompt::print_critical_warning(&parsed)?
                             }
                             _ => {
-                                match prompt_for_permission(&parsed)? {
-                                    PermissionChoice::AllowOnce => true,
-                                    PermissionChoice::AllowCommand => {
-                                        // TODO: persist this
-                                        true
+                                // Check if already permitted
+                                if permissions.is_command_allowed(&parsed.info.command) {
+                                    true
+                                } else if permissions.is_directory_allowed(&cwd) {
+                                    true
+                                } else {
+                                    match prompt_for_permission(&parsed)? {
+                                        PermissionChoice::AllowOnce => true,
+                                        PermissionChoice::AllowCommand => {
+                                            permissions.allow_command(&parsed.info.command, true);
+                                            true
+                                        }
+                                        PermissionChoice::AllowHere => {
+                                            permissions.allow_directory(&cwd, true);
+                                            true
+                                        }
+                                        PermissionChoice::Deny => false,
                                     }
-                                    PermissionChoice::AllowHere => {
-                                        // TODO: persist this
-                                        true
-                                    }
-                                    PermissionChoice::Deny => false,
                                 }
                             }
                         };
