@@ -1,0 +1,11 @@
+[plugin]
+name = "git"
+description = "Git branch and status"
+
+[provides]
+branch = { command = "git branch --show-current 2>/dev/null" }
+dirty = { command = "git status --porcelain 2>/dev/null", transform = "non_empty" }
+
+[icons]
+dirty = "*"
+clean = ""

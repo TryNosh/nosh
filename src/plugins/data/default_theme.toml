@@ -1,0 +1,30 @@
+[prompt]
+format = """
+
+[{dir}](blue bold) [{context:git_branch}](purple){context:git_status} \
+{context:package_icon} [{context:package_version}](yellow) \
+{context:rust_icon} [{context:rust_version}](red) \
+{context:node_icon} [{context:node_version}](green) \
+{context:bun_icon} [{context:bun_version}](white) \
+{context:python_icon} [{context:python_version}](blue) \
+{context:go_icon} [{context:go_version}](cyan) \
+{context:cpp_icon} [{context:cpp_version}](magenta) \
+{context:docker_icon} [{context:docker_version}](cyan) \
+[{exec_time:took}](yellow)
+[{prompt:char}](green bold) """
+char = "❯"
+char_error = "❯"
+
+[plugins]
+context = { enabled = true }
+exec_time = { enabled = true, min_ms = 1000 }
+
+[colors]
+path = "#5f87af"
+git_clean = "#87af87"
+git_dirty = "#d7af5f"
+error = "#d75f5f"
+warning = "#d7af5f"
+success = "#87af87"
+info = "#87afd7"
+ai_command = "#af87d7"

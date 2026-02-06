@@ -1,0 +1,41 @@
+[plugin]
+name = "context"
+description = "Project context from nosh-context"
+
+[provides]
+# Git information
+git_branch = { source = "internal" }
+git_status = { source = "internal" }
+
+# Package information
+package_name = { source = "internal" }
+package_version = { source = "internal" }
+package_icon = { source = "internal" }
+
+# Rust toolchain
+rust_version = { source = "internal" }
+rust_icon = { source = "internal" }
+
+# Node.js toolchain
+node_version = { source = "internal" }
+node_icon = { source = "internal" }
+
+# Bun runtime
+bun_version = { source = "internal" }
+bun_icon = { source = "internal" }
+
+# Go toolchain
+go_version = { source = "internal" }
+go_icon = { source = "internal" }
+
+# Python toolchain
+python_version = { source = "internal" }
+python_icon = { source = "internal" }
+
+# C++ toolchain
+cpp_version = { source = "internal" }
+cpp_icon = { source = "internal" }
+
+# Docker
+docker_version = { source = "internal" }
+docker_icon = { source = "internal" }

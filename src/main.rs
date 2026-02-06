@@ -3,11 +3,14 @@ mod auth;
 mod config;
 mod exec;
 mod onboarding;
+mod paths;
+mod plugins;
 mod repl;
 mod safety;
 
-use ai::{CloudClient, OllamaClient, PlanInfo};
-use dialoguer::{theme::ColorfulTheme, Select};
+use ai::{CloudClient, OllamaClient};
+use plugins::builtins::{install_builtins, ConfigFile, update_config, config_needs_update};
+use dialoguer::{theme::ColorfulTheme, Select, MultiSelect};
 
 fn format_tokens(tokens: i32) -> String {
     if tokens >= 1_000_000 {
@@ -76,6 +79,9 @@ async fn main() -> Result<()> {
 
     // Run onboarding if needed or if --setup flag is passed
     if force_setup || needs_onboarding(&creds) {
+        // Install built-in plugins and themes on first run
+        let _ = install_builtins();
+
         match run_onboarding().await? {
             OnboardingChoice::Quit => return Ok(()),
             OnboardingChoice::Ollama => {}
@@ -99,7 +105,8 @@ async fn main() -> Result<()> {
 
     println!("Type /help for commands. Prefix with ? for AI.\n");
 
-    let mut repl = Repl::new()?;
+    // Initialize REPL with theme from config
+    let mut repl = Repl::new(&config.prompt.theme)?;
     repl.load_history();
 
     // Create persistent shell session (brush-based bash interpreter)
@@ -131,6 +138,7 @@ async fn main() -> Result<()> {
                 println!("  /setup    Run setup wizard to switch AI backend");
                 println!("  /usage    Show usage, balance, and manage subscription");
                 println!("  /buy      Buy tokens or subscribe to a plan");
+                println!("  /nosh     Manage nosh config files");
                 println!("  /help     Show this help");
                 println!("  exit      Quit nosh");
                 println!("\nUsage:");
@@ -332,6 +340,110 @@ async fn main() -> Result<()> {
                 }
                 continue;
             }
+            Some(line) if line == "/nosh" => {
+                let options = vec![
+                    "Open config directory",
+                    "Edit config file",
+                    "Update config files to latest",
+                    "Back",
+                ];
+
+                let selection = Select::with_theme(&ColorfulTheme::default())
+                    .with_prompt("Nosh Configuration")
+                    .items(&options)
+                    .default(0)
+                    .interact_opt();
+
+                match selection {
+                    Ok(Some(0)) => {
+                        // Open config directory
+                        let config_dir = paths::nosh_config_dir();
+                        let editor = std::env::var("EDITOR").unwrap_or_else(|_| "open".to_string());
+                        println!("Opening {}...", config_dir.display());
+                        if let Err(e) = std::process::Command::new(&editor)
+                            .arg(&config_dir)
+                            .spawn()
+                        {
+                            eprintln!("Could not open directory: {}", e);
+                            println!("Config directory: {}", config_dir.display());
+                        }
+                    }
+                    Ok(Some(1)) => {
+                        // Edit specific config file
+                        let files = vec![
+                            ("Theme (default.toml)", paths::themes_dir().join("default.toml")),
+                            ("Config (config.toml)", paths::config_file()),
+                            ("Init script (init.sh)", paths::init_file()),
+                            ("Permissions", paths::permissions_file()),
+                        ];
+
+                        let file_names: Vec<&str> = files.iter().map(|(n, _)| *n).collect();
+
+                        let file_selection = Select::with_theme(&ColorfulTheme::default())
+                            .with_prompt("Select file to edit")
+                            .items(&file_names)
+                            .default(0)
+                            .interact_opt();
+
+                        if let Ok(Some(idx)) = file_selection {
+                            let (_, path) = &files[idx];
+                            let editor = std::env::var("EDITOR").unwrap_or_else(|_| "nano".to_string());
+                            println!("Opening {} with {}...", path.display(), editor);
+                            if let Err(e) = std::process::Command::new(&editor)
+                                .arg(path)
+                                .status()
+                            {
+                                eprintln!("Could not open editor: {}", e);
+                            }
+                        }
+                    }
+                    Ok(Some(2)) => {
+                        // Update config files
+                        let files_to_update: Vec<_> = ConfigFile::all()
+                            .iter()
+                            .filter(|f| config_needs_update(**f))
+                            .copied()
+                            .collect();
+
+                        if files_to_update.is_empty() {
+                            println!("\nAll config files are up to date!");
+                            continue;
+                        }
+
+                        let labels: Vec<String> = files_to_update
+                            .iter()
+                            .map(|f| format!("{} ({})", f.display_name(), f.path().display()))
+                            .collect();
+
+                        println!("\nThe following files differ from built-in defaults:\n");
+
+                        let selections = MultiSelect::with_theme(&ColorfulTheme::default())
+                            .with_prompt("Select files to update (Space to toggle, Enter to confirm)")
+                            .items(&labels)
+                            .defaults(&vec![true; labels.len()])
+                            .interact_opt();
+
+                        if let Ok(Some(indices)) = selections {
+                            if indices.is_empty() {
+                                println!("No files selected.");
+                            } else {
+                                for idx in &indices {
+                                    let file = files_to_update[*idx];
+                                    match update_config(file) {
+                                        Ok(_) => println!("  Updated: {}", file.display_name()),
+                                        Err(e) => eprintln!("  Error updating {}: {}", file.display_name(), e),
+                                    }
+                                }
+                                // Reload theme and plugins
+                                repl.reload("default");
+                                println!("\nConfig reloaded!");
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                continue;
+            }
             Some(line) if line.starts_with('/') => {
                 // Unknown built-in command
                 eprintln!("Unknown command: {}", line);
@@ -417,16 +529,20 @@ async fn main() -> Result<()> {
                 };
 
                 if should_execute {
+                    repl.start_command();
                     if let Err(e) = shell.execute(&command).await {
                         eprintln!("Execution error: {}", e);
                     }
+                    repl.end_command();
                 }
             }
             Some(command) => {
                 // Direct command - execute without safety checks
+                repl.start_command();
                 if let Err(e) = shell.execute(&command).await {
                     eprintln!("Execution error: {}", e);
                 }
+                repl.end_command();
             }
             None => break,
         }

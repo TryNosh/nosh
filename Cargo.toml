@@ -1,3 +1,6 @@
+[workspace]
+members = [".", "nosh-context"]
+
 [package]
 name = "nosh"
 version = "0.1.0"
@@ -20,3 +23,6 @@ shell-words = "1"
 toml = "0.8"
 brush-core = "0.4.0"
 brush-builtins = "0.1.0"
+hostname = "0.4"
+regex = "1"
+nosh-context = { path = "nosh-context" }

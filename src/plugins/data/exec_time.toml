@@ -1,0 +1,10 @@
+[plugin]
+name = "exec_time"
+description = "Command execution time"
+
+[provides]
+duration = { source = "internal" }
+took = { source = "internal" }
+
+[config]
+min_ms = 500
