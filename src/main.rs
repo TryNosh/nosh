@@ -601,19 +601,14 @@ async fn main() -> Result<()> {
                                 format_step_output(&command, "", session.iterations())
                             );
 
-                            // Capture output by running through shell with timeout
-                            let cmd_timeout = std::time::Duration::from_secs(30);
-                            let output = match tokio::time::timeout(
-                                cmd_timeout,
-                                tokio::process::Command::new("sh")
-                                    .arg("-c")
-                                    .arg(&command)
-                                    .current_dir(&cwd)
-                                    .output(),
-                            )
-                            .await
+                            // Capture output by running through shell
+                            let output = match std::process::Command::new("sh")
+                                .arg("-c")
+                                .arg(&command)
+                                .current_dir(&cwd)
+                                .output()
                             {
-                                Ok(Ok(out)) => {
+                                Ok(out) => {
                                     let stdout = String::from_utf8_lossy(&out.stdout);
                                     let stderr = String::from_utf8_lossy(&out.stderr);
                                     let combined = if stderr.is_empty() {
@@ -634,11 +629,7 @@ async fn main() -> Result<()> {
 
                                     (combined, out.status.code().unwrap_or(1))
                                 }
-                                Ok(Err(e)) => (format!("Error: {}", e), 1),
-                                Err(_) => {
-                                    println!("\x1b[33m[Timeout]\x1b[0m Command took too long (>30s)");
-                                    ("[Command timed out after 30 seconds]".to_string(), 124)
-                                }
+                                Err(e) => (format!("Error: {}", e), 1),
                             };
 
                             session.record_execution(&command, &output.0);
