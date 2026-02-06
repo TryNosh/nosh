@@ -7,8 +7,10 @@ use std::io::{self, Write};
 #[derive(Debug, Clone, PartialEq)]
 pub enum PermissionChoice {
     AllowOnce,
-    AllowCommand,  // Allow this command pattern
-    AllowHere,     // Allow all in this directory
+    AllowSubcommand,     // Allow specific subcommand pattern (e.g., "git log")
+    AllowCommand,        // Allow base command (e.g., "git" - allows all subcommands)
+    AllowCommandHere,    // Allow this command/pattern in this directory only
+    AllowHere,           // Allow all commands in this directory
     Deny,
 }
 
@@ -33,27 +35,57 @@ pub fn prompt_for_permission(parsed: &ParsedCommand) -> io::Result<PermissionCho
     )?;
     writeln!(stdout)?;
 
-    let always_allow_cmd = format!("Always allow \"{}\" commands", parsed.info.command);
-    let options = vec![
-        "Allow once",
-        always_allow_cmd.as_str(),
-        "Always allow here (this directory)",
-        "Don't run",
-    ];
+    // Build options based on whether command has a subcommand
+    let has_subcommand = parsed.info.subcommand.is_some();
+    let command = &parsed.info.command;
+    let command_pattern = &parsed.info.command_pattern;
+
+    let mut options: Vec<String> = vec!["Allow once".to_string()];
+
+    if has_subcommand {
+        // Show option for specific subcommand (e.g., "git log")
+        options.push(format!("Always allow \"{}\" commands here", command_pattern));
+        options.push(format!("Always allow \"{}\" commands everywhere", command_pattern));
+        // Show option for all subcommands (e.g., all "git" commands)
+        options.push(format!("Always allow all \"{}\" commands", command));
+    } else {
+        // No subcommand - show directory-scoped option first, then global
+        options.push(format!("Always allow \"{}\" here", command));
+        options.push(format!("Always allow \"{}\" everywhere", command));
+    }
+
+    options.push("Always allow all commands here".to_string());
+    options.push("Don't run".to_string());
+
+    let option_refs: Vec<&str> = options.iter().map(|s| s.as_str()).collect();
 
     let selection = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("What would you like to do?")
-        .items(&options)
+        .items(&option_refs)
         .default(0)
         .interact()
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
-    Ok(match selection {
-        0 => PermissionChoice::AllowOnce,
-        1 => PermissionChoice::AllowCommand,
-        2 => PermissionChoice::AllowHere,
-        _ => PermissionChoice::Deny,
-    })
+    if has_subcommand {
+        // With subcommand: 0=once, 1=subcommand here, 2=subcommand everywhere, 3=all command, 4=all here, 5=deny
+        Ok(match selection {
+            0 => PermissionChoice::AllowOnce,
+            1 => PermissionChoice::AllowCommandHere,  // "git log" here only
+            2 => PermissionChoice::AllowSubcommand,   // "git log" everywhere
+            3 => PermissionChoice::AllowCommand,      // all "git" commands
+            4 => PermissionChoice::AllowHere,         // all commands here
+            _ => PermissionChoice::Deny,
+        })
+    } else {
+        // Without subcommand: 0=once, 1=command here, 2=command everywhere, 3=all here, 4=deny
+        Ok(match selection {
+            0 => PermissionChoice::AllowOnce,
+            1 => PermissionChoice::AllowCommandHere,  // "rm" here only
+            2 => PermissionChoice::AllowCommand,      // "rm" everywhere
+            3 => PermissionChoice::AllowHere,         // all commands here
+            _ => PermissionChoice::Deny,
+        })
+    }
 }
 
 pub fn print_blocked(parsed: &ParsedCommand) -> io::Result<()> {
