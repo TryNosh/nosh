@@ -1,6 +1,7 @@
 mod ai;
 mod exec;
 mod repl;
+mod safety;
 
 use ai::OllamaClient;
 use anyhow::Result;
