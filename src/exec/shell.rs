@@ -3,7 +3,8 @@ use brush_builtins::{BuiltinSet, default_builtins};
 use brush_core::ProcessGroupPolicy;
 use brush_core::variables::ShellVariable;
 use brush_core::{Shell, ExecutionParameters};
-use std::path::PathBuf;
+
+use crate::paths;
 
 pub struct ShellSession {
     shell: Shell,
@@ -15,14 +16,29 @@ impl ShellSession {
         // Get the standard bash builtins (cd, export, etc.)
         let builtins = default_builtins(BuiltinSet::BashMode);
 
-        // Build shell with builtins, without loading rc files
-        let mut shell = Shell::builder()
-            .builtins(builtins)
-            .interactive(true)
-            .no_profile(true)
-            .no_rc(true)
-            .build()
-            .await?;
+        // Build shell with builtins
+        // Use our custom init.sh instead of default rc files
+        let init_script = paths::init_file();
+
+        let mut shell = if init_script.exists() {
+            // Use our init script which sources ~/.bashrc
+            Shell::builder()
+                .builtins(builtins)
+                .interactive(true)
+                .no_profile(true)
+                .rc_file(init_script)
+                .build()
+                .await?
+        } else {
+            // No init script, skip rc entirely
+            Shell::builder()
+                .builtins(builtins)
+                .interactive(true)
+                .no_profile(true)
+                .no_rc(true)
+                .build()
+                .await?
+        };
 
         // Set environment variables for colored output (exported so child processes see them)
         let mut clicolor = ShellVariable::new("1");
@@ -64,8 +80,4 @@ impl ShellSession {
         Ok(())
     }
 
-    /// Get the shell's current working directory
-    pub fn working_dir(&self) -> PathBuf {
-        self.shell.working_dir().to_path_buf()
-    }
 }

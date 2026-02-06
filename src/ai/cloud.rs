@@ -9,14 +9,17 @@ pub struct Usage {
     pub total_balance: i32,
     pub tokens_used: i32,
     pub monthly_allowance: i32,
+    #[allow(dead_code)]
     pub period_start: Option<String>,
     pub resets_at: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
 pub struct PlanInfo {
-    pub plan: Option<String>,           // "starter", "pro", or null
-    pub status: Option<String>,         // "active", "canceled", etc.
+    pub plan: Option<String>,
+    #[allow(dead_code)]
+    pub status: Option<String>,
+    #[allow(dead_code)]
     pub current_period_end: Option<String>,
     pub cancel_at_period_end: bool,
 }

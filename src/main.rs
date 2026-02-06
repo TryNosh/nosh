@@ -2,6 +2,7 @@ mod ai;
 mod auth;
 mod config;
 mod exec;
+mod history;
 mod onboarding;
 mod paths;
 mod plugins;
@@ -106,7 +107,7 @@ async fn main() -> Result<()> {
     println!("Type /help for commands. Prefix with ? for AI.\n");
 
     // Initialize REPL with theme from config
-    let mut repl = Repl::new(&config.prompt.theme)?;
+    let mut repl = Repl::new(&config.prompt.theme, Some(config.history.load_count))?;
     repl.load_history();
 
     // Create persistent shell session (brush-based bash interpreter)
@@ -507,18 +508,42 @@ async fn main() -> Result<()> {
                         safety::prompt::print_critical_warning(&parsed)?
                     }
                     _ => {
-                        if permissions.is_command_allowed(&parsed.info.command) {
+                        // Check permissions in order: global command, command+directory (checking actual paths), all-directory
+                        if permissions.is_command_allowed(&parsed.info.command, &parsed.info.command_pattern) {
+                            true
+                        } else if permissions.are_affected_paths_allowed(
+                            &parsed.info.command,
+                            &parsed.info.command_pattern,
+                            &parsed.info.affected_paths,
+                            &cwd,
+                        ) {
                             true
                         } else if permissions.is_directory_allowed(&cwd) {
                             true
                         } else {
                             match prompt_for_permission(&parsed)? {
                                 PermissionChoice::AllowOnce => true,
+                                PermissionChoice::AllowCommandHere => {
+                                    // Allow this command/pattern in this directory only
+                                    permissions.allow_command_in_directory(
+                                        &parsed.info.command_pattern,
+                                        &cwd,
+                                        true,
+                                    );
+                                    true
+                                }
+                                PermissionChoice::AllowSubcommand => {
+                                    // Allow specific subcommand pattern globally (e.g., "git log")
+                                    permissions.allow_command(&parsed.info.command_pattern, true);
+                                    true
+                                }
                                 PermissionChoice::AllowCommand => {
+                                    // Allow base command globally (all subcommands)
                                     permissions.allow_command(&parsed.info.command, true);
                                     true
                                 }
                                 PermissionChoice::AllowHere => {
+                                    // Allow all commands in this directory
                                     permissions.allow_directory(&cwd, true);
                                     true
                                 }

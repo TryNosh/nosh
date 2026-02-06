@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
-use std::path::PathBuf;
+
+use crate::paths;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Credentials {
@@ -13,7 +14,7 @@ pub struct Credentials {
 
 impl Credentials {
     pub fn load() -> Result<Self> {
-        let path = Self::config_path();
+        let path = paths::credentials_file();
 
         if path.exists() {
             let content = fs::read_to_string(&path)?;
@@ -25,7 +26,7 @@ impl Credentials {
     }
 
     pub fn save(&self) -> Result<()> {
-        let path = Self::config_path();
+        let path = paths::credentials_file();
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
@@ -43,19 +44,13 @@ impl Credentials {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn clear() -> Result<()> {
-        let path = Self::config_path();
+        let path = paths::credentials_file();
         if path.exists() {
             fs::remove_file(&path)?;
         }
         Ok(())
-    }
-
-    fn config_path() -> PathBuf {
-        dirs::config_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("nosh")
-            .join("credentials.toml")
     }
 
     pub fn is_authenticated(&self) -> bool {
