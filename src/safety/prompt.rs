@@ -1,6 +1,7 @@
 use crate::safety::{ParsedCommand, RiskLevel};
 use crossterm::style::{Color, ResetColor, SetForegroundColor};
 use crossterm::ExecutableCommand;
+use dialoguer::{theme::ColorfulTheme, Confirm, Select};
 use std::io::{self, Write};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -30,26 +31,28 @@ pub fn prompt_for_permission(parsed: &ParsedCommand) -> io::Result<PermissionCho
         },
         parsed.risk_reason
     )?;
-
     writeln!(stdout)?;
-    writeln!(stdout, "  [enter] Allow once")?;
-    writeln!(stdout, "  [a] Always allow \"{}\" commands", parsed.info.command)?;
-    writeln!(stdout, "  [d] Always allow here (this directory)")?;
-    writeln!(stdout, "  [n] Don't run")?;
-    writeln!(stdout)?;
-    write!(stdout, "> ")?;
-    stdout.flush()?;
 
-    let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
-    let input = input.trim().to_lowercase();
+    let always_allow_cmd = format!("Always allow \"{}\" commands", parsed.info.command);
+    let options = vec![
+        "Allow once",
+        always_allow_cmd.as_str(),
+        "Always allow here (this directory)",
+        "Don't run",
+    ];
 
-    Ok(match input.as_str() {
-        "" => PermissionChoice::AllowOnce,
-        "a" => PermissionChoice::AllowCommand,
-        "d" => PermissionChoice::AllowHere,
-        "n" | "no" => PermissionChoice::Deny,
-        _ => PermissionChoice::Deny, // Default to deny on unknown input
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("What would you like to do?")
+        .items(&options)
+        .default(0)
+        .interact()
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+    Ok(match selection {
+        0 => PermissionChoice::AllowOnce,
+        1 => PermissionChoice::AllowCommand,
+        2 => PermissionChoice::AllowHere,
+        _ => PermissionChoice::Deny,
     })
 }
 
@@ -69,11 +72,10 @@ pub fn print_critical_warning(parsed: &ParsedCommand) -> io::Result<bool> {
     stdout.execute(ResetColor)?;
     writeln!(stdout, "Reason: {}", parsed.risk_reason)?;
     writeln!(stdout)?;
-    write!(stdout, "Type 'yes' to proceed: ")?;
-    stdout.flush()?;
 
-    let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
-
-    Ok(input.trim().to_lowercase() == "yes")
+    Confirm::with_theme(&ColorfulTheme::default())
+        .with_prompt("Are you sure you want to run this?")
+        .default(false)
+        .interact()
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
 }

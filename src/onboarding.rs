@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Result};
 use crossterm::style::{Color, ResetColor, SetForegroundColor};
 use crossterm::ExecutableCommand;
+use dialoguer::{theme::ColorfulTheme, Input, Select};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::io::{self, Write};
@@ -49,62 +50,48 @@ pub async fn run_onboarding() -> Result<OnboardingChoice> {
     stdout.execute(SetForegroundColor(Color::Cyan))?;
     writeln!(stdout, "\nWelcome to nosh!")?;
     stdout.execute(ResetColor)?;
+    writeln!(stdout)?;
 
-    writeln!(stdout)?;
-    writeln!(stdout, "How would you like to power your shell?")?;
-    writeln!(stdout)?;
-    writeln!(stdout, "  [1] Ollama (free, runs locally)")?;
-    writeln!(stdout, "      Requires Ollama installed with a model")?;
-    writeln!(stdout)?;
-    writeln!(stdout, "  [2] Nosh Cloud (subscription)")?;
-    writeln!(stdout, "      No setup, works instantly")?;
-    writeln!(stdout)?;
-    writeln!(stdout, "  [q] Quit")?;
-    writeln!(stdout)?;
-    write!(stdout, "> ")?;
-    stdout.flush()?;
+    let options = &[
+        "Ollama (free, runs locally)",
+        "Nosh Cloud (subscription)",
+        "Quit",
+    ];
 
-    let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
-    let input = input.trim();
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("How would you like to power your shell?")
+        .items(options)
+        .default(0)
+        .interact()?;
 
-    match input {
-        "1" => {
-            setup_ollama()?;
+    match selection {
+        0 => {
+            setup_ollama().await?;
             Ok(OnboardingChoice::Ollama)
         }
-        "2" => {
+        1 => {
             setup_cloud().await?;
             Ok(OnboardingChoice::Cloud)
         }
-        "q" | "Q" => Ok(OnboardingChoice::Quit),
-        _ => {
-            writeln!(stdout, "Invalid choice. Please try again.")?;
-            Box::pin(run_onboarding()).await
-        }
+        _ => Ok(OnboardingChoice::Quit),
     }
 }
 
-fn setup_ollama() -> Result<()> {
+async fn setup_ollama() -> Result<()> {
     let mut stdout = io::stdout();
 
     writeln!(stdout)?;
     writeln!(stdout, "Setting up Ollama...")?;
     writeln!(stdout)?;
-    writeln!(stdout, "Which model would you like to use?")?;
-    writeln!(stdout, "(Press enter for default: llama3.2)")?;
-    writeln!(stdout)?;
-    write!(stdout, "Model: ")?;
-    stdout.flush()?;
 
-    let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
-    let model = input.trim();
-    let model = if model.is_empty() { "llama3.2" } else { model };
+    let model: String = Input::with_theme(&ColorfulTheme::default())
+        .with_prompt("Which model would you like to use?")
+        .default("llama3.2".to_string())
+        .interact_text()?;
 
     let mut config = Config::load().unwrap_or_default();
     config.ai.backend = "ollama".to_string();
-    config.ai.model = model.to_string();
+    config.ai.model = model.clone();
     config.save()?;
 
     writeln!(stdout)?;
@@ -128,17 +115,17 @@ async fn setup_cloud() -> Result<()> {
     writeln!(stdout)?;
     writeln!(stdout, "Setting up Nosh Cloud...")?;
     writeln!(stdout)?;
-    write!(stdout, "Enter your email: ")?;
-    stdout.flush()?;
 
-    let mut email = String::new();
-    io::stdin().read_line(&mut email)?;
-    let email = email.trim().to_string();
-
-    if !email.contains('@') {
-        writeln!(stdout, "Invalid email. Please try again.")?;
-        return Box::pin(setup_cloud()).await;
-    }
+    let email: String = Input::with_theme(&ColorfulTheme::default())
+        .with_prompt("Enter your email")
+        .validate_with(|input: &String| -> Result<(), &str> {
+            if input.contains('@') {
+                Ok(())
+            } else {
+                Err("Please enter a valid email address")
+            }
+        })
+        .interact_text()?;
 
     writeln!(stdout)?;
     writeln!(stdout, "Sending magic link...")?;

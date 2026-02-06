@@ -1,3 +1,3 @@
-mod runner;
+mod shell;
 
-pub use runner::execute_command;
+pub use shell::ShellSession;
