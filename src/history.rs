@@ -127,10 +127,10 @@ impl History {
         Ok(commands)
     }
 
-    /// Get total number of commands in history.
+    /// Get total number of unique commands in history.
     pub fn count(&self) -> Result<i64> {
         let count: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM history",
+            "SELECT COUNT(DISTINCT command) FROM history",
             [],
             |row| row.get(0),
         )?;

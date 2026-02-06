@@ -118,14 +118,13 @@ impl History for SqliteRustylineHistory {
             return Ok(false);
         }
 
-        // Add to SQLite immediately
+        // Add to SQLite immediately for persistence
         let _ = self.db.add(line);
 
-        // Add to session entries for immediate access
+        // Add to session entries for immediate access via arrow keys
+        // Note: len() = total_count + session_entries.len(), so we don't
+        // increment total_count here - session_entries already extends length
         self.session_entries.borrow_mut().push(line.to_string());
-
-        // Update total count
-        *self.total_count.borrow_mut() += 1;
 
         Ok(true)
     }
