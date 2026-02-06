@@ -1,7 +1,7 @@
 use anyhow::Result;
 use rustyline::error::ReadlineError;
 use rustyline::history::History;
-use rustyline::{Config, Editor};
+use rustyline::{Cmd, Config, Editor, EventHandler, KeyCode, KeyEvent, Modifiers};
 use std::time::Instant;
 
 use super::sqlite_history::SqliteRustylineHistory;
@@ -26,7 +26,18 @@ impl Repl {
         let config = Config::builder()
             .auto_add_history(false) // We handle this manually
             .build();
-        let editor = Editor::with_history(config, history)?;
+        let mut editor = Editor::with_history(config, history)?;
+
+        // Bind Up/Down arrows to prefix-based history search
+        // When there's text before the cursor, search for matching prefix
+        editor.bind_sequence(
+            KeyEvent(KeyCode::Up, Modifiers::NONE),
+            EventHandler::Simple(Cmd::HistorySearchBackward),
+        );
+        editor.bind_sequence(
+            KeyEvent(KeyCode::Down, Modifiers::NONE),
+            EventHandler::Simple(Cmd::HistorySearchForward),
+        );
 
         // Load plugins and theme
         let mut plugin_manager = PluginManager::new();
