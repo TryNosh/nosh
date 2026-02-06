@@ -19,23 +19,22 @@ use safety::{parse_command, prompt_for_permission, PermissionChoice, PermissionS
 async fn main() -> Result<()> {
     println!("nosh v{}", env!("CARGO_PKG_VERSION"));
 
-    let mut config = Config::load().unwrap_or_default();
     let mut creds = Credentials::load().unwrap_or_default();
     let mut permissions = PermissionStore::load().unwrap_or_default();
 
-    // Run onboarding if needed
-    if needs_onboarding(&config, &creds) {
+    // Run onboarding if needed (before loading config, since onboarding creates it)
+    if needs_onboarding(&creds) {
         match run_onboarding()? {
             OnboardingChoice::Quit => return Ok(()),
-            OnboardingChoice::Ollama => {
-                config = Config::load().unwrap_or_default();
-            }
+            OnboardingChoice::Ollama => {}
             OnboardingChoice::Cloud => {
-                config = Config::load().unwrap_or_default();
                 creds = Credentials::load().unwrap_or_default();
             }
         }
     }
+
+    // Load config (created by onboarding if first run)
+    let config = Config::load().unwrap_or_default();
 
     // Check Ollama availability if using it
     if config.ai.backend == "ollama" {

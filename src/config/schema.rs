@@ -73,6 +73,11 @@ impl Default for PromptConfig {
 }
 
 impl Config {
+    /// Check if config file exists (for determining if onboarding is needed)
+    pub fn exists() -> bool {
+        Self::config_path().exists()
+    }
+
     pub fn load() -> Result<Self> {
         let path = Self::config_path();
 
@@ -81,9 +86,8 @@ impl Config {
             let config: Config = toml::from_str(&content)?;
             Ok(config)
         } else {
-            let config = Config::default();
-            config.save()?;
-            Ok(config)
+            // Return default but don't save yet - let onboarding handle it
+            Ok(Config::default())
         }
     }
 

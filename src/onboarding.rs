@@ -139,10 +139,17 @@ fn setup_cloud() -> Result<()> {
     Ok(())
 }
 
-pub fn needs_onboarding(config: &Config, creds: &Credentials) -> bool {
+pub fn needs_onboarding(creds: &Credentials) -> bool {
+    // Run onboarding if config doesn't exist (first run)
+    if !Config::exists() {
+        return true;
+    }
+
+    // Otherwise check backend-specific requirements
+    let config = Config::load().unwrap_or_default();
     match config.ai.backend.as_str() {
         "cloud" => !creds.is_authenticated(),
-        "ollama" => false, // Ollama doesn't need setup, just warn if not available
+        "ollama" => false, // Ollama config exists, just warn if not available
         _ => true, // Unknown backend, run onboarding
     }
 }
