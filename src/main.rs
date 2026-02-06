@@ -38,9 +38,9 @@ async fn main() -> Result<()> {
 
     // Check Ollama availability if using it
     if config.ai.backend == "ollama" {
-        let ollama = OllamaClient::new(&config.ai.model);
+        let ollama = OllamaClient::new(&config.ai.model, &config.ai.ollama_url);
         if !ollama.check_available().await {
-            eprintln!("Warning: Ollama not available at localhost:11434");
+            eprintln!("Warning: Ollama not available at {}", config.ai.ollama_url);
             eprintln!("Start Ollama or run `nosh --setup` to reconfigure.\n");
         }
     }
@@ -66,7 +66,7 @@ async fn main() -> Result<()> {
                         Err(anyhow::anyhow!("Not authenticated"))
                     }
                 } else {
-                    let client = OllamaClient::new(&config.ai.model);
+                    let client = OllamaClient::new(&config.ai.model, &config.ai.ollama_url);
                     client.translate(&line, &cwd).await
                 };
 

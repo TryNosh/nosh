@@ -22,10 +22,10 @@ pub struct OllamaClient {
 }
 
 impl OllamaClient {
-    pub fn new(model: &str) -> Self {
+    pub fn new(model: &str, base_url: &str) -> Self {
         Self {
             client: Client::new(),
-            base_url: "http://localhost:11434".to_string(),
+            base_url: base_url.to_string(),
             model: model.to_string(),
         }
     }
