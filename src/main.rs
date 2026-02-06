@@ -515,12 +515,25 @@ async fn main() -> Result<()> {
                     }
 
                     // Get next step from AI
+                    let ai_spinner = ProgressBar::new_spinner();
+                    ai_spinner.set_style(
+                        ProgressStyle::default_spinner()
+                            .template("{spinner:.cyan} {msg}")
+                            .unwrap(),
+                    );
+                    ai_spinner.set_message("Thinking...");
+                    ai_spinner.enable_steady_tick(std::time::Duration::from_millis(100));
+
                     let step = match client
                         .agentic_step(input, &cwd, Some(&ai_context), &executions)
                         .await
                     {
-                        Ok(s) => s,
+                        Ok(s) => {
+                            ai_spinner.finish_and_clear();
+                            s
+                        }
                         Err(e) => {
+                            ai_spinner.finish_and_clear();
                             eprintln!("AI error: {}", e);
                             break;
                         }
@@ -596,19 +609,31 @@ async fn main() -> Result<()> {
                             }
 
                             // Execute the command and capture output
-                            println!(
+                            print!(
                                 "{}",
                                 format_step_output(&command, "", session.iterations())
                             );
 
-                            // Capture output by running through shell
-                            let output = match std::process::Command::new("sh")
+                            // Show spinner while command runs
+                            let spinner = ProgressBar::new_spinner();
+                            spinner.set_style(
+                                ProgressStyle::default_spinner()
+                                    .template("{spinner:.cyan} {msg}")
+                                    .unwrap(),
+                            );
+                            spinner.set_message("Running...");
+                            spinner.enable_steady_tick(std::time::Duration::from_millis(100));
+
+                            // Capture output by running through shell (async so spinner can tick)
+                            let output = match tokio::process::Command::new("sh")
                                 .arg("-c")
                                 .arg(&command)
                                 .current_dir(&cwd)
                                 .output()
+                                .await
                             {
                                 Ok(out) => {
+                                    spinner.finish_and_clear();
                                     let stdout = String::from_utf8_lossy(&out.stdout);
                                     let stderr = String::from_utf8_lossy(&out.stderr);
                                     let combined = if stderr.is_empty() {
@@ -629,7 +654,10 @@ async fn main() -> Result<()> {
 
                                     (combined, out.status.code().unwrap_or(1))
                                 }
-                                Err(e) => (format!("Error: {}", e), 1),
+                                Err(e) => {
+                                    spinner.finish_and_clear();
+                                    (format!("Error: {}", e), 1)
+                                }
                             };
 
                             session.record_execution(&command, &output.0);
