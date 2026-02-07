@@ -1799,6 +1799,8 @@ dependencies = [
  "dirs",
  "hostname",
  "indicatif",
+ "libc",
+ "nix 0.29.0",
  "nosh-context",
  "open",
  "regex",

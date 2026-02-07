@@ -10,6 +10,9 @@ pub struct Config {
     /// User has completed or skipped onboarding
     #[serde(default)]
     pub onboarding_complete: bool,
+    /// Welcome message shown on startup (empty = no message)
+    #[serde(default)]
+    pub welcome_message: String,
     pub ai: AiConfig,
     pub behavior: BehaviorConfig,
     pub prompt: PromptConfig,
@@ -55,6 +58,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             onboarding_complete: false,
+            welcome_message: String::new(),
             ai: AiConfig::default(),
             behavior: BehaviorConfig::default(),
             prompt: PromptConfig::default(),

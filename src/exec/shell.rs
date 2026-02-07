@@ -5,10 +5,14 @@ use brush_core::variables::ShellVariable;
 use brush_core::{Shell, ExecutionParameters};
 
 use crate::paths;
+use super::terminal;
 
 pub struct ShellSession {
     shell: Shell,
+    /// Default params (SameProcessGroup, for AI commands)
     params: ExecutionParameters,
+    /// Job control params (NewProcessGroup, for shell commands)
+    job_control_params: ExecutionParameters,
 }
 
 impl ShellSession {
@@ -55,15 +59,31 @@ impl ShellSession {
             shell.env.set_global("TERM", term)?;
         }
 
-        // Use SameProcessGroup to avoid terminal control issues
+        // Default params: SameProcessGroup (for AI commands - no job control)
         let mut params = ExecutionParameters::default();
         params.process_group_policy = ProcessGroupPolicy::SameProcessGroup;
 
-        Ok(Self { shell, params })
+        // Job control params: NewProcessGroup (for shell commands - enables Ctrl+Z, fg, bg)
+        let mut job_control_params = ExecutionParameters::default();
+        job_control_params.process_group_policy = ProcessGroupPolicy::NewProcessGroup;
+
+        Ok(Self { shell, params, job_control_params })
     }
 
-    /// Execute a command string
+    /// Execute a command string with job control (for direct shell commands).
+    /// Supports Ctrl+Z to suspend, and fg/bg/jobs builtins.
     pub async fn execute(&mut self, command: &str) -> Result<()> {
+        self.execute_internal(command, true).await
+    }
+
+    /// Execute a command without job control (for AI-translated commands).
+    /// Ctrl+Z will not suspend these commands.
+    pub async fn execute_no_job_control(&mut self, command: &str) -> Result<()> {
+        self.execute_internal(command, false).await
+    }
+
+    /// Internal execution with configurable job control
+    async fn execute_internal(&mut self, command: &str, job_control: bool) -> Result<()> {
         let trimmed = command.trim();
 
         // Handle exit/quit
@@ -71,7 +91,21 @@ impl ShellSession {
             std::process::exit(0);
         }
 
-        let _result = self.shell.run_string(command, &self.params).await?;
+        // Update terminal title to show running command
+        terminal::set_title_to_command(trimmed);
+
+        let params = if job_control {
+            &self.job_control_params
+        } else {
+            &self.params
+        };
+
+        let _result = self.shell.run_string(command, params).await?;
+
+        // After command completes (or is stopped), reclaim terminal foreground
+        if job_control {
+            terminal::reclaim_foreground();
+        }
 
         // Sync nosh's cwd with brush's cwd
         let shell_cwd = self.shell.working_dir();
@@ -80,4 +114,10 @@ impl ShellSession {
         Ok(())
     }
 
+    /// Check and report completed background jobs.
+    /// Call this after each command to notify user of finished jobs.
+    pub fn check_jobs(&mut self) -> Result<()> {
+        self.shell.check_for_completed_jobs()?;
+        Ok(())
+    }
 }

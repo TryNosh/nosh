@@ -13,6 +13,16 @@ use crate::paths;
 use crate::plugins::loader::PluginManager;
 use crate::plugins::theme::Theme;
 
+/// Result of a readline operation
+pub enum ReadlineResult {
+    /// User entered a line (may be empty)
+    Line(String),
+    /// User pressed Ctrl+C (interrupt - show new prompt)
+    Interrupted,
+    /// User pressed Ctrl+D (EOF - exit shell)
+    Eof,
+}
+
 pub struct Repl {
     editor: Editor<NoshHelper, SqliteRustylineHistory>,
     plugin_manager: PluginManager,
@@ -99,7 +109,7 @@ impl Repl {
         self.theme.format_prompt(&mut self.plugin_manager)
     }
 
-    pub fn readline(&mut self) -> Result<Option<String>> {
+    pub fn readline(&mut self) -> Result<ReadlineResult> {
         let prompt = self.prompt();
         match self.editor.readline(&prompt) {
             Ok(line) => {
@@ -108,10 +118,10 @@ impl Repl {
                     // Add to history (SQLite handles persistence)
                     let _ = self.editor.history_mut().add(&line);
                 }
-                Ok(Some(line))
+                Ok(ReadlineResult::Line(line))
             }
-            Err(ReadlineError::Interrupted) => Ok(None), // Ctrl+C
-            Err(ReadlineError::Eof) => Ok(None),         // Ctrl+D
+            Err(ReadlineError::Interrupted) => Ok(ReadlineResult::Interrupted), // Ctrl+C
+            Err(ReadlineError::Eof) => Ok(ReadlineResult::Eof),                 // Ctrl+D
             Err(e) => Err(e.into()),
         }
     }

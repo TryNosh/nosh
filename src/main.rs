@@ -146,7 +146,7 @@ use config::Config;
 use exec::ShellSession;
 use indicatif::{ProgressBar, ProgressStyle};
 use onboarding::{needs_onboarding, run_onboarding, OnboardingChoice};
-use repl::Repl;
+use repl::{Repl, ReadlineResult};
 use safety::{parse_command, prompt_for_permission, PermissionChoice, PermissionStore, RiskLevel};
 
 #[tokio::main]
@@ -199,7 +199,10 @@ async fn main() -> Result<()> {
     // Handle --setup flag
     let force_setup = args.iter().any(|a| a == "--setup");
 
-    println!("nosh v{}", env!("CARGO_PKG_VERSION"));
+    // Initialize terminal control for job control support (Ctrl+Z, fg, bg, jobs)
+    if let Err(e) = exec::terminal::init() {
+        eprintln!("Warning: Could not initialize job control: {}", e);
+    }
 
     let mut creds = Credentials::load().unwrap_or_default();
     let mut permissions = PermissionStore::load().unwrap_or_default();
@@ -222,7 +225,10 @@ async fn main() -> Result<()> {
     // Load config (created by onboarding if first run)
     let config = Config::load().unwrap_or_default();
 
-    println!("Type /help for commands. Prefix with ? for AI.\n");
+    // Show welcome message if configured
+    if !config.welcome_message.is_empty() {
+        println!("{}\n", config.welcome_message);
+    }
 
     // Initialize REPL with theme from config
     let mut repl = Repl::new(&config.prompt.theme, Some(config.history.load_count))?;
@@ -239,9 +245,18 @@ async fn main() -> Result<()> {
             .map(|p| p.display().to_string())
             .unwrap_or_else(|_| ".".to_string());
 
+        // Update terminal title to show current directory
+        exec::terminal::set_title_to_cwd();
+
         match repl.readline()? {
-            Some(line) if line == "exit" || line == "quit" => break,
-            Some(line) if line == "/setup" => {
+            ReadlineResult::Eof => break,
+            ReadlineResult::Interrupted => {
+                // Ctrl+C at prompt - just show a new prompt
+                println!();
+                continue;
+            }
+            ReadlineResult::Line(line) if line == "exit" || line == "quit" => break,
+            ReadlineResult::Line(line) if line == "/setup" => {
                 match run_onboarding().await {
                     Ok(OnboardingChoice::Cloud) => {
                         creds = Credentials::load().unwrap_or_default();
@@ -256,7 +271,7 @@ async fn main() -> Result<()> {
                 }
                 continue;
             }
-            Some(line) if line == "/help" => {
+            ReadlineResult::Line(line) if line == "/help" => {
                 println!("\nBuilt-in commands:");
                 println!("  /setup              Run setup wizard to sign in");
                 println!("  /usage              Show usage, balance, and manage subscription");
@@ -275,12 +290,12 @@ async fn main() -> Result<()> {
                 println!("  Privacy Policy:  https://nosh.sh/docs/privacy\n");
                 continue;
             }
-            Some(line) if line == "/clear" => {
+            ReadlineResult::Line(line) if line == "/clear" => {
                 ai_context.clear();
                 println!("AI context cleared.");
                 continue;
             }
-            Some(line) if line.starts_with("/convert-zsh ") => {
+            ReadlineResult::Line(line) if line.starts_with("/convert-zsh ") => {
                 let path = line.strip_prefix("/convert-zsh ").unwrap().trim();
                 if path.is_empty() {
                     eprintln!("Usage: /convert-zsh /path/to/zsh/completion");
@@ -293,11 +308,11 @@ async fn main() -> Result<()> {
                 }
                 continue;
             }
-            Some(line) if line == "/convert-zsh" => {
+            ReadlineResult::Line(line) if line == "/convert-zsh" => {
                 eprintln!("Usage: /convert-zsh /path/to/zsh/completion");
                 continue;
             }
-            Some(line) if line == "/usage" => {
+            ReadlineResult::Line(line) if line == "/usage" => {
                 let token = match &creds.token {
                     Some(t) => t,
                     None => {
@@ -430,7 +445,7 @@ async fn main() -> Result<()> {
                 }
                 continue;
             }
-            Some(line) if line == "/buy" => {
+            ReadlineResult::Line(line) if line == "/buy" => {
                 let token = match &creds.token {
                     Some(t) => t,
                     None => {
@@ -443,7 +458,7 @@ async fn main() -> Result<()> {
                 show_buy_menu(&client).await;
                 continue;
             }
-            Some(line) if line == "/nosh" => {
+            ReadlineResult::Line(line) if line == "/nosh" => {
                 let options = vec![
                     "Open config directory",
                     "Edit config file",
@@ -590,13 +605,13 @@ async fn main() -> Result<()> {
                 }
                 continue;
             }
-            Some(line) if line.starts_with('/') => {
+            ReadlineResult::Line(line) if line.starts_with('/') => {
                 // Unknown built-in command
                 eprintln!("Unknown command: {}", line);
                 eprintln!("Type /help for available commands.");
                 continue;
             }
-            Some(line) if line.starts_with("??") => {
+            ReadlineResult::Line(line) if line.starts_with("??") => {
                 // Agentic mode - AI investigates before answering
                 let input = line[2..].trim();
                 if input.is_empty() {
@@ -789,7 +804,7 @@ async fn main() -> Result<()> {
                 }
                 continue;
             }
-            Some(line) if line.starts_with('?') => {
+            ReadlineResult::Line(line) if line.starts_with('?') => {
                 // AI request - translate and run through safety layer
                 let input = line[1..].trim();
                 if input.is_empty() {
@@ -890,21 +905,24 @@ async fn main() -> Result<()> {
 
                 if should_execute {
                     repl.start_command();
-                    if let Err(e) = shell.execute(&command).await {
+                    // AI commands run without job control (Ctrl+Z won't suspend)
+                    if let Err(e) = shell.execute_no_job_control(&command).await {
                         eprintln!("Execution error: {}", e);
                     }
                     repl.end_command();
                 }
             }
-            Some(command) => {
-                // Direct command - execute without safety checks
+            ReadlineResult::Line(command) => {
+                // Direct command - execute with job control (Ctrl+Z suspends)
                 repl.start_command();
                 if let Err(e) = shell.execute(&command).await {
                     eprintln!("Execution error: {}", e);
                 }
                 repl.end_command();
+
+                // Check for completed background jobs
+                let _ = shell.check_jobs();
             }
-            None => break,
         }
     }
 
