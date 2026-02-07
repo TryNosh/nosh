@@ -1,19 +1,25 @@
+use std::sync::Arc;
+use std::time::Instant;
+
 use anyhow::Result;
 use rustyline::error::ReadlineError;
 use rustyline::history::History;
 use rustyline::{Cmd, Config, Editor, EventHandler, KeyCode, KeyEvent, Modifiers};
-use std::time::Instant;
 
+use super::helper::NoshHelper;
 use super::sqlite_history::SqliteRustylineHistory;
+use crate::completions::CompletionManager;
 use crate::paths;
 use crate::plugins::loader::PluginManager;
 use crate::plugins::theme::Theme;
 
 pub struct Repl {
-    editor: Editor<(), SqliteRustylineHistory>,
+    editor: Editor<NoshHelper, SqliteRustylineHistory>,
     plugin_manager: PluginManager,
     theme: Theme,
     last_command_start: Option<Instant>,
+    #[allow(dead_code)]
+    completion_manager: Arc<CompletionManager>,
 }
 
 impl Repl {
@@ -22,11 +28,17 @@ impl Repl {
         let history = SqliteRustylineHistory::open(&paths::history_db())
             .map_err(|e| anyhow::anyhow!("Failed to open history: {}", e))?;
 
-        // Configure rustyline with our SQLite history
+        // Create completion manager (lazy-loading)
+        let completion_manager = Arc::new(CompletionManager::new());
+        let helper = NoshHelper::new(Arc::clone(&completion_manager));
+
+        // Configure rustyline with our SQLite history and helper
         let config = Config::builder()
             .auto_add_history(false) // We handle this manually
+            .completion_type(rustyline::CompletionType::List)
             .build();
         let mut editor = Editor::with_history(config, history)?;
+        editor.set_helper(Some(helper));
 
         // Bind Up/Down arrows to prefix-based history search
         // When there's text before the cursor, search for matching prefix
@@ -50,6 +62,7 @@ impl Repl {
             plugin_manager,
             theme,
             last_command_start: None,
+            completion_manager,
         })
     }
 

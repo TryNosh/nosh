@@ -1,0 +1,286 @@
+# Cargo completion definitions for nosh
+
+[completions.cargo]
+description = "Rust package manager"
+
+# Subcommands without detailed options
+[completions.cargo.subcommands]
+bench = "Execute benchmarks"
+fetch = "Fetch dependencies"
+fix = "Automatically fix lint warnings"
+generate-lockfile = "Generate Cargo.lock"
+login = "Save API token"
+logout = "Remove API token"
+metadata = "Output package metadata as JSON"
+owner = "Manage crate owners"
+package = "Assemble the local package into a tarball"
+rustc = "Compile with custom rustc flags"
+rustdoc = "Build documentation with custom rustdoc flags"
+search = "Search packages on crates.io"
+vendor = "Vendor dependencies locally"
+verify-project = "Check correctness of crate manifest"
+version = "Show version information"
+yank = "Yank a version from the index"
+
+[completions.cargo.options]
+"--version" = "Print version info"
+"--help" = "Print help"
+"-V" = "Print version info"
+"-h" = "Print help"
+"--list" = "List installed commands"
+"--explain" = { description = "Explain an error code", takes_value = true }
+"-v" = "Verbose output"
+"--verbose" = "Verbose output"
+"-q" = "Quiet output"
+"--quiet" = "Quiet output"
+"--color" = { description = "Coloring: auto, always, never", takes_value = true }
+"--frozen" = "Require Cargo.lock is up to date"
+"--locked" = "Require Cargo.lock is up to date"
+"--offline" = "Run without network access"
+
+# Subcommands with detailed options
+[completions.cargo.subcommands.build]
+description = "Compile the current package"
+options = [
+    { name = "-p", description = "Package to build", takes_value = true },
+    { name = "--package", description = "Package to build", takes_value = true },
+    { name = "--all", description = "Build all packages in workspace" },
+    { name = "--workspace", description = "Build all packages in workspace" },
+    { name = "-r", description = "Build in release mode" },
+    { name = "--release", description = "Build in release mode" },
+    { name = "--profile", description = "Build with specific profile", takes_value = true },
+    { name = "--target", description = "Target triple", takes_value = true },
+    { name = "--features", description = "Space-separated features", takes_value = true },
+    { name = "--all-features", description = "Activate all features" },
+    { name = "--no-default-features", description = "Disable default features" },
+    { name = "-j", description = "Number of parallel jobs", takes_value = true },
+    { name = "--jobs", description = "Number of parallel jobs", takes_value = true },
+    { name = "--bin", description = "Build only the specified binary", takes_value = true },
+    { name = "--lib", description = "Build only the library" },
+    { name = "--example", description = "Build only the specified example", takes_value = true },
+    { name = "--test", description = "Build only the specified test", takes_value = true },
+    { name = "--bench", description = "Build only the specified benchmark", takes_value = true },
+]
+
+[completions.cargo.subcommands.run]
+description = "Run a binary or example"
+options = [
+    { name = "-p", description = "Package with target", takes_value = true },
+    { name = "--package", description = "Package with target", takes_value = true },
+    { name = "-r", description = "Run in release mode" },
+    { name = "--release", description = "Run in release mode" },
+    { name = "--profile", description = "Run with specific profile", takes_value = true },
+    { name = "--features", description = "Space-separated features", takes_value = true },
+    { name = "--all-features", description = "Activate all features" },
+    { name = "--no-default-features", description = "Disable default features" },
+    { name = "--bin", description = "Run the specified binary", takes_value = true },
+    { name = "--example", description = "Run the specified example", takes_value = true },
+    { name = "-j", description = "Number of parallel jobs", takes_value = true },
+]
+
+[completions.cargo.subcommands.test]
+description = "Run tests"
+options = [
+    { name = "-p", description = "Package to test", takes_value = true },
+    { name = "--package", description = "Package to test", takes_value = true },
+    { name = "--all", description = "Test all packages" },
+    { name = "--workspace", description = "Test all packages" },
+    { name = "-r", description = "Test in release mode" },
+    { name = "--release", description = "Test in release mode" },
+    { name = "--features", description = "Space-separated features", takes_value = true },
+    { name = "--all-features", description = "Activate all features" },
+    { name = "--no-default-features", description = "Disable default features" },
+    { name = "--lib", description = "Test only library" },
+    { name = "--bin", description = "Test only specified binary", takes_value = true },
+    { name = "--bins", description = "Test all binaries" },
+    { name = "--test", description = "Test only specified integration test", takes_value = true },
+    { name = "--tests", description = "Test all integration tests" },
+    { name = "--doc", description = "Test documentation examples" },
+    { name = "--no-run", description = "Compile but don't run tests" },
+    { name = "--no-fail-fast", description = "Run all tests regardless of failure" },
+    { name = "-j", description = "Number of parallel jobs", takes_value = true },
+]
+
+[completions.cargo.subcommands.check]
+description = "Check code without building"
+options = [
+    { name = "-p", description = "Package to check", takes_value = true },
+    { name = "--package", description = "Package to check", takes_value = true },
+    { name = "--all", description = "Check all packages" },
+    { name = "--workspace", description = "Check all packages" },
+    { name = "--features", description = "Space-separated features", takes_value = true },
+    { name = "--all-features", description = "Activate all features" },
+    { name = "--no-default-features", description = "Disable default features" },
+    { name = "--lib", description = "Check only library" },
+    { name = "--bin", description = "Check only specified binary", takes_value = true },
+    { name = "--bins", description = "Check all binaries" },
+    { name = "--profile", description = "Check with profile", takes_value = true },
+    { name = "-j", description = "Number of parallel jobs", takes_value = true },
+]
+
+[completions.cargo.subcommands.clippy]
+description = "Run Clippy lints"
+options = [
+    { name = "-p", description = "Package to check", takes_value = true },
+    { name = "--package", description = "Package to check", takes_value = true },
+    { name = "--all", description = "Check all packages" },
+    { name = "--workspace", description = "Check all packages" },
+    { name = "--features", description = "Space-separated features", takes_value = true },
+    { name = "--all-features", description = "Activate all features" },
+    { name = "--no-default-features", description = "Disable default features" },
+    { name = "--fix", description = "Apply lint suggestions" },
+    { name = "--allow-dirty", description = "Allow dirty working directory" },
+    { name = "--allow-staged", description = "Allow staged files" },
+    { name = "-W", description = "Set lint level to warn", takes_value = true },
+    { name = "-A", description = "Set lint level to allow", takes_value = true },
+    { name = "-D", description = "Set lint level to deny", takes_value = true },
+    { name = "-F", description = "Set lint level to forbid", takes_value = true },
+]
+
+[completions.cargo.subcommands.fmt]
+description = "Format code"
+options = [
+    { name = "-p", description = "Package to format", takes_value = true },
+    { name = "--package", description = "Package to format", takes_value = true },
+    { name = "--all", description = "Format all packages" },
+    { name = "--check", description = "Check without modifying" },
+]
+
+[completions.cargo.subcommands.doc]
+description = "Build documentation"
+options = [
+    { name = "-p", description = "Package to document", takes_value = true },
+    { name = "--package", description = "Package to document", takes_value = true },
+    { name = "--all", description = "Document all packages" },
+    { name = "--workspace", description = "Document all packages" },
+    { name = "--open", description = "Open docs in browser" },
+    { name = "--no-deps", description = "Don't build dependency docs" },
+    { name = "--features", description = "Space-separated features", takes_value = true },
+    { name = "--all-features", description = "Activate all features" },
+    { name = "--no-default-features", description = "Disable default features" },
+]
+
+[completions.cargo.subcommands.add]
+description = "Add dependencies"
+options = [
+    { name = "--dev", description = "Add as dev dependency" },
+    { name = "-D", description = "Add as dev dependency" },
+    { name = "--build", description = "Add as build dependency" },
+    { name = "-B", description = "Add as build dependency" },
+    { name = "--optional", description = "Mark as optional" },
+    { name = "--no-optional", description = "Mark as required" },
+    { name = "--features", description = "Activate features", takes_value = true },
+    { name = "-F", description = "Activate features", takes_value = true },
+    { name = "--no-default-features", description = "Disable default features" },
+    { name = "--git", description = "Git repository URL", takes_value = true },
+    { name = "--branch", description = "Git branch", takes_value = true },
+    { name = "--tag", description = "Git tag", takes_value = true },
+    { name = "--path", description = "Local path", takes_value = true, value_completer = "directories" },
+    { name = "--rename", description = "Rename the dependency", takes_value = true },
+]
+
+[completions.cargo.subcommands.remove]
+description = "Remove dependencies"
+options = [
+    { name = "--dev", description = "Remove from dev dependencies" },
+    { name = "-D", description = "Remove from dev dependencies" },
+    { name = "--build", description = "Remove from build dependencies" },
+    { name = "-B", description = "Remove from build dependencies" },
+    { name = "-p", description = "Package to modify", takes_value = true },
+    { name = "--package", description = "Package to modify", takes_value = true },
+]
+
+[completions.cargo.subcommands.install]
+description = "Install a Rust binary"
+options = [
+    { name = "--version", description = "Version to install", takes_value = true },
+    { name = "--git", description = "Git repository URL", takes_value = true },
+    { name = "--branch", description = "Git branch", takes_value = true },
+    { name = "--tag", description = "Git tag", takes_value = true },
+    { name = "--path", description = "Local path", takes_value = true, value_completer = "directories" },
+    { name = "--root", description = "Install directory", takes_value = true, value_completer = "directories" },
+    { name = "-f", description = "Force overwrite" },
+    { name = "--force", description = "Force overwrite" },
+    { name = "-j", description = "Number of parallel jobs", takes_value = true },
+    { name = "--features", description = "Space-separated features", takes_value = true },
+    { name = "--all-features", description = "Activate all features" },
+    { name = "--no-default-features", description = "Disable default features" },
+]
+
+[completions.cargo.subcommands.uninstall]
+description = "Uninstall a binary"
+options = [
+    { name = "--root", description = "Install directory", takes_value = true, value_completer = "directories" },
+]
+
+[completions.cargo.subcommands.new]
+description = "Create a new package"
+options = [
+    { name = "--lib", description = "Create library package" },
+    { name = "--bin", description = "Create binary package" },
+    { name = "--edition", description = "Rust edition", takes_value = true },
+    { name = "--name", description = "Package name", takes_value = true },
+    { name = "--vcs", description = "VCS to use: git, hg, pijul, fossil, none", takes_value = true },
+]
+positional = "directories"
+
+[completions.cargo.subcommands.init]
+description = "Create package in existing directory"
+options = [
+    { name = "--lib", description = "Create library package" },
+    { name = "--bin", description = "Create binary package" },
+    { name = "--edition", description = "Rust edition", takes_value = true },
+    { name = "--name", description = "Package name", takes_value = true },
+    { name = "--vcs", description = "VCS to use: git, hg, pijul, fossil, none", takes_value = true },
+]
+positional = "directories"
+
+[completions.cargo.subcommands.clean]
+description = "Remove build artifacts"
+options = [
+    { name = "-p", description = "Package to clean", takes_value = true },
+    { name = "--package", description = "Package to clean", takes_value = true },
+    { name = "--release", description = "Clean release artifacts" },
+    { name = "--profile", description = "Clean specific profile", takes_value = true },
+    { name = "--target", description = "Target triple", takes_value = true },
+    { name = "--target-dir", description = "Target directory", takes_value = true, value_completer = "directories" },
+    { name = "--doc", description = "Clean documentation" },
+]
+
+[completions.cargo.subcommands.update]
+description = "Update dependencies"
+options = [
+    { name = "-p", description = "Package to update", takes_value = true },
+    { name = "--package", description = "Package to update", takes_value = true },
+    { name = "--aggressive", description = "Update all dependencies" },
+    { name = "--precise", description = "Update to exact version", takes_value = true },
+    { name = "--dry-run", description = "Don't write Cargo.lock" },
+    { name = "-w", description = "Update workspace packages" },
+    { name = "--workspace", description = "Update workspace packages" },
+]
+
+[completions.cargo.subcommands.tree]
+description = "Display dependency tree"
+options = [
+    { name = "-p", description = "Package to display", takes_value = true },
+    { name = "--package", description = "Package to display", takes_value = true },
+    { name = "-i", description = "Invert tree (show dependents)", takes_value = true },
+    { name = "--invert", description = "Invert tree (show dependents)", takes_value = true },
+    { name = "--depth", description = "Maximum display depth", takes_value = true },
+    { name = "-d", description = "Show duplicate dependencies" },
+    { name = "--duplicates", description = "Show duplicate dependencies" },
+    { name = "-e", description = "Edge kinds: normal, dev, build, all", takes_value = true },
+    { name = "--edges", description = "Edge kinds: normal, dev, build, all", takes_value = true },
+    { name = "-f", description = "Format string", takes_value = true },
+    { name = "--format", description = "Format string", takes_value = true },
+]
+
+[completions.cargo.subcommands.publish]
+description = "Upload package"
+options = [
+    { name = "--dry-run", description = "Perform checks without uploading" },
+    { name = "--token", description = "API token", takes_value = true },
+    { name = "--registry", description = "Registry name", takes_value = true },
+    { name = "--allow-dirty", description = "Allow dirty working directory" },
+    { name = "--no-verify", description = "Skip verification" },
+]

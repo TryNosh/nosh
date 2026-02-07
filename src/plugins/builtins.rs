@@ -15,15 +15,23 @@ pub const CONTEXT_PLUGIN: &str = include_str!("data/context.toml");
 pub const DEFAULT_THEME: &str = include_str!("data/default_theme.toml");
 pub const INIT_SCRIPT: &str = include_str!("data/init.sh");
 
+/// Embedded completion files.
+pub const GIT_COMPLETION: &str = include_str!("../completions/data/git.toml");
+pub const CARGO_COMPLETION: &str = include_str!("../completions/data/cargo.toml");
+pub const NPM_COMPLETION: &str = include_str!("../completions/data/npm.toml");
+pub const DOCKER_COMPLETION: &str = include_str!("../completions/data/docker.toml");
+
 /// Install built-in plugins to the user's plugins directory.
 pub fn install_builtins() -> Result<()> {
     let plugins_dir = paths::plugins_dir();
     let builtin_dir = plugins_dir.join("builtin");
     let themes_dir = paths::themes_dir();
+    let completions_dir = paths::completions_dir();
 
     // Create directories
     fs::create_dir_all(&builtin_dir)?;
     fs::create_dir_all(&themes_dir)?;
+    fs::create_dir_all(&completions_dir)?;
 
     // Install plugins (only if they don't exist)
     install_if_missing(&builtin_dir.join("git.toml"), GIT_PLUGIN)?;
@@ -35,6 +43,12 @@ pub fn install_builtins() -> Result<()> {
 
     // Install init script
     install_if_missing(&paths::init_file(), INIT_SCRIPT)?;
+
+    // Install completions
+    install_if_missing(&completions_dir.join("git.toml"), GIT_COMPLETION)?;
+    install_if_missing(&completions_dir.join("cargo.toml"), CARGO_COMPLETION)?;
+    install_if_missing(&completions_dir.join("npm.toml"), NPM_COMPLETION)?;
+    install_if_missing(&completions_dir.join("docker.toml"), DOCKER_COMPLETION)?;
 
     Ok(())
 }
@@ -55,6 +69,10 @@ pub enum ConfigFile {
     ExecTimePlugin,
     ContextPlugin,
     InitScript,
+    GitCompletion,
+    CargoCompletion,
+    NpmCompletion,
+    DockerCompletion,
 }
 
 impl ConfigFile {
@@ -66,6 +84,10 @@ impl ConfigFile {
             ConfigFile::ExecTimePlugin => paths::plugins_dir().join("builtin").join("exec_time.toml"),
             ConfigFile::ContextPlugin => paths::plugins_dir().join("builtin").join("context.toml"),
             ConfigFile::InitScript => paths::init_file(),
+            ConfigFile::GitCompletion => paths::completions_dir().join("git.toml"),
+            ConfigFile::CargoCompletion => paths::completions_dir().join("cargo.toml"),
+            ConfigFile::NpmCompletion => paths::completions_dir().join("npm.toml"),
+            ConfigFile::DockerCompletion => paths::completions_dir().join("docker.toml"),
         }
     }
 
@@ -77,6 +99,10 @@ impl ConfigFile {
             ConfigFile::ExecTimePlugin => EXEC_TIME_PLUGIN,
             ConfigFile::ContextPlugin => CONTEXT_PLUGIN,
             ConfigFile::InitScript => INIT_SCRIPT,
+            ConfigFile::GitCompletion => GIT_COMPLETION,
+            ConfigFile::CargoCompletion => CARGO_COMPLETION,
+            ConfigFile::NpmCompletion => NPM_COMPLETION,
+            ConfigFile::DockerCompletion => DOCKER_COMPLETION,
         }
     }
 
@@ -88,6 +114,10 @@ impl ConfigFile {
             ConfigFile::ExecTimePlugin => "Exec time plugin",
             ConfigFile::ContextPlugin => "Context plugin",
             ConfigFile::InitScript => "Init script",
+            ConfigFile::GitCompletion => "Git completions",
+            ConfigFile::CargoCompletion => "Cargo completions",
+            ConfigFile::NpmCompletion => "npm completions",
+            ConfigFile::DockerCompletion => "Docker completions",
         }
     }
 
@@ -99,6 +129,10 @@ impl ConfigFile {
             ConfigFile::ExecTimePlugin,
             ConfigFile::ContextPlugin,
             ConfigFile::InitScript,
+            ConfigFile::GitCompletion,
+            ConfigFile::CargoCompletion,
+            ConfigFile::NpmCompletion,
+            ConfigFile::DockerCompletion,
         ]
     }
 }

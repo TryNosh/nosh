@@ -1,0 +1,246 @@
+# npm completion definitions for nosh
+
+[completions.npm]
+description = "Node.js package manager"
+
+# Subcommands without detailed options
+[completions.npm.subcommands]
+access = "Set access level on published packages"
+adduser = "Add a registry user account"
+bin = "Display npm bin folder"
+bugs = "Bugs for a package in a web browser"
+completion = "Tab completion for npm"
+dedupe = "Reduce duplication"
+deprecate = "Deprecate a version of a package"
+diff = "Diff registry package with local"
+dist-tag = "Modify package distribution tags"
+docs = "Docs for a package in a web browser"
+doctor = "Check your environments"
+edit = "Edit an installed package"
+explain = "Explain installed packages"
+explore = "Browse an installed package"
+find-dupes = "Find duplicate packages"
+fund = "Retrieve funding information"
+get = "Echo config value to stdout"
+help = "Search npm help documentation"
+help-search = "Search npm help documentation"
+hook = "Manage registry hooks"
+install-ci-test = "Install and test package with clean install"
+install-test = "Install package and run tests"
+login = "Login to registry"
+logout = "Log out of registry"
+org = "Manage orgs"
+owner = "Manage package owners"
+pack = "Create a tarball from a package"
+ping = "Ping npm registry"
+pkg = "Manage package.json"
+prefix = "Display prefix"
+profile = "Manage your npm profile"
+prune = "Remove extraneous packages"
+rebuild = "Rebuild a package"
+repo = "Open package repository in browser"
+restart = "Restart a package"
+root = "Display npm root"
+run-script = "Run arbitrary package scripts"
+search = "Search for packages"
+set = "Set config key-value pair"
+set-script = "Set tasks in scripts section"
+shrinkwrap = "Lock down dependency versions"
+star = "Mark your favorite packages"
+stars = "View packages marked as favorites"
+stop = "Stop a package"
+team = "Manage organization teams"
+token = "Manage your authentication tokens"
+unpublish = "Remove a package from registry"
+unstar = "Remove star from package"
+view = "View registry info"
+whoami = "Display npm username"
+
+[completions.npm.options]
+"--version" = "Show version"
+"-v" = "Show version"
+"--help" = "Show help"
+"-h" = "Show help"
+
+# Subcommand-specific completions
+[completions.npm.subcommands.install]
+description = "Install a package"
+options = [
+    { name = "-g", description = "Install globally" },
+    { name = "--global", description = "Install globally" },
+    { name = "-S", description = "Save to dependencies" },
+    { name = "--save", description = "Save to dependencies" },
+    { name = "-D", description = "Save to devDependencies" },
+    { name = "--save-dev", description = "Save to devDependencies" },
+    { name = "-O", description = "Save to optionalDependencies" },
+    { name = "--save-optional", description = "Save to optionalDependencies" },
+    { name = "-E", description = "Save exact version" },
+    { name = "--save-exact", description = "Save exact version" },
+    { name = "--no-save", description = "Don't save to package.json" },
+    { name = "--legacy-peer-deps", description = "Ignore peer deps" },
+    { name = "--strict-peer-deps", description = "Fail on peer dep issues" },
+    { name = "--package-lock-only", description = "Only update package-lock" },
+    { name = "--dry-run", description = "Report without changes" },
+    { name = "-f", description = "Force install" },
+    { name = "--force", description = "Force install" },
+]
+
+[completions.npm.subcommands.uninstall]
+description = "Remove a package"
+options = [
+    { name = "-g", description = "Remove globally" },
+    { name = "--global", description = "Remove globally" },
+    { name = "-S", description = "Remove from dependencies" },
+    { name = "--save", description = "Remove from dependencies" },
+    { name = "-D", description = "Remove from devDependencies" },
+    { name = "--save-dev", description = "Remove from devDependencies" },
+]
+positional = "npm_packages"
+
+[completions.npm.subcommands.update]
+description = "Update packages"
+options = [
+    { name = "-g", description = "Update globally" },
+    { name = "--global", description = "Update globally" },
+    { name = "-S", description = "Save to dependencies" },
+    { name = "--save", description = "Save to dependencies" },
+]
+positional = "npm_packages"
+
+[completions.npm.subcommands.run]
+description = "Run arbitrary package scripts"
+options = [
+    { name = "--if-present", description = "Don't error if script missing" },
+    { name = "--silent", description = "Don't output command" },
+    { name = "-s", description = "Don't output command" },
+]
+positional = "npm_scripts"
+
+[completions.npm.subcommands.test]
+description = "Test a package"
+options = [
+    { name = "--ignore-scripts", description = "Don't run any scripts" },
+]
+
+[completions.npm.subcommands.start]
+description = "Start a package"
+options = [
+    { name = "--ignore-scripts", description = "Don't run any scripts" },
+]
+
+[completions.npm.subcommands.init]
+description = "Create package.json"
+options = [
+    { name = "-y", description = "Accept defaults" },
+    { name = "--yes", description = "Accept defaults" },
+    { name = "-w", description = "Create workspace" },
+    { name = "--workspace", description = "Create workspace" },
+    { name = "--scope", description = "Create scoped package", takes_value = true },
+]
+
+[completions.npm.subcommands.publish]
+description = "Publish a package"
+options = [
+    { name = "--tag", description = "Register with tag", takes_value = true },
+    { name = "--access", description = "Set access level: public, restricted", takes_value = true },
+    { name = "--dry-run", description = "Report without publishing" },
+    { name = "--otp", description = "One-time password", takes_value = true },
+]
+
+[completions.npm.subcommands.version]
+description = "Bump version"
+options = [
+    { name = "--preid", description = "Prerelease identifier", takes_value = true },
+    { name = "--no-git-tag-version", description = "Don't create git tag" },
+    { name = "--allow-same-version", description = "Allow same version" },
+    { name = "-m", description = "Commit message", takes_value = true },
+]
+
+[completions.npm.subcommands.ls]
+description = "List installed packages"
+options = [
+    { name = "-g", description = "List globally" },
+    { name = "--global", description = "List globally" },
+    { name = "--depth", description = "Max display depth", takes_value = true },
+    { name = "--json", description = "Output as JSON" },
+    { name = "--long", description = "Show extended info" },
+    { name = "-l", description = "Show extended info" },
+    { name = "--parseable", description = "Show parseable output" },
+    { name = "-p", description = "Show parseable output" },
+    { name = "-a", description = "Show all packages" },
+    { name = "--all", description = "Show all packages" },
+    { name = "--prod", description = "Only production deps" },
+    { name = "--dev", description = "Only dev deps" },
+]
+
+[completions.npm.subcommands.outdated]
+description = "Check for outdated packages"
+options = [
+    { name = "-g", description = "Check globally" },
+    { name = "--global", description = "Check globally" },
+    { name = "--json", description = "Output as JSON" },
+    { name = "--long", description = "Show extended info" },
+    { name = "-l", description = "Show extended info" },
+    { name = "-a", description = "Show all packages" },
+    { name = "--all", description = "Show all packages" },
+]
+
+[completions.npm.subcommands.audit]
+description = "Run security audit"
+options = [
+    { name = "--json", description = "Output as JSON" },
+    { name = "--fix", description = "Install compatible updates" },
+    { name = "--force", description = "Force install updates" },
+    { name = "--dry-run", description = "Report without changes" },
+    { name = "--audit-level", description = "Min severity: info, low, moderate, high, critical, none", takes_value = true },
+    { name = "--production", description = "Only production deps" },
+    { name = "--omit", description = "Omit dependency types", takes_value = true },
+]
+
+[completions.npm.subcommands.ci]
+description = "Clean install for CI"
+options = [
+    { name = "--ignore-scripts", description = "Don't run scripts" },
+    { name = "--audit", description = "Run audit" },
+    { name = "--no-audit", description = "Skip audit" },
+]
+
+[completions.npm.subcommands.link]
+description = "Symlink a package"
+options = [
+    { name = "-g", description = "Link globally" },
+    { name = "--global", description = "Link globally" },
+]
+positional = "directories"
+
+[completions.npm.subcommands.cache]
+description = "Manage cache"
+options = [
+    { name = "--cache", description = "Cache location", takes_value = true, value_completer = "directories" },
+]
+
+[completions.npm.subcommands.config]
+description = "Manage configuration"
+options = [
+    { name = "-g", description = "Global config" },
+    { name = "--global", description = "Global config" },
+    { name = "--json", description = "Output as JSON" },
+    { name = "-l", description = "Show all defaults" },
+    { name = "--long", description = "Show all defaults" },
+]
+
+[completions.npm.subcommands.exec]
+description = "Run command from package"
+options = [
+    { name = "-c", description = "Command to run", takes_value = true },
+    { name = "--call", description = "Command to run", takes_value = true },
+    { name = "-p", description = "Package to install", takes_value = true },
+    { name = "--package", description = "Package to install", takes_value = true },
+    { name = "-y", description = "Skip confirmation" },
+    { name = "--yes", description = "Skip confirmation" },
+]
+
+# Dynamic completers
+[completions.npm.dynamic]
+npm_packages = { command = "npm ls --depth=0 --parseable 2>/dev/null | xargs -n1 basename 2>/dev/null" }
+npm_scripts = { command = "npm run 2>/dev/null | grep -E '^  [a-zA-Z]' | awk '{print $1}'" }

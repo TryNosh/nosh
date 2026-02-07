@@ -1,0 +1,219 @@
+# Git completion definitions for nosh
+
+[completions.git]
+description = "Git version control"
+
+# Subcommands without detailed options use simple format
+[completions.git.subcommands]
+bisect = "Find the commit that introduced a bug"
+cherry-pick = "Apply changes from existing commits"
+grep = "Print lines matching a pattern"
+init = "Create an empty Git repository"
+mv = "Move or rename a file, directory, or symlink"
+restore = "Restore working tree files"
+rm = "Remove files from the working tree and from the index"
+show = "Show various types of objects"
+status = "Show the working tree status"
+
+[completions.git.options]
+"--version" = "Print git version"
+"--help" = "Print help"
+"-C" = { description = "Run as if started in <path>", takes_value = true, value_completer = "directories" }
+"--git-dir" = { description = "Set path to repository", takes_value = true, value_completer = "directories" }
+"--work-tree" = { description = "Set path to working tree", takes_value = true, value_completer = "directories" }
+
+# Subcommands with detailed options
+[completions.git.subcommands.add]
+description = "Add file contents to the index"
+options = [
+    { name = "-A", description = "Add all changes (tracked and untracked)" },
+    { name = "-p", description = "Interactive staging (patch mode)" },
+    { name = "-u", description = "Update tracked files only" },
+    { name = "-n", description = "Dry run, don't actually add" },
+    { name = "-v", description = "Be verbose" },
+    { name = "-f", description = "Allow adding ignored files" },
+]
+positional = "files"
+
+[completions.git.subcommands.commit]
+description = "Record changes to the repository"
+options = [
+    { name = "-m", description = "Commit message", takes_value = true },
+    { name = "-a", description = "Stage all modified files" },
+    { name = "--amend", description = "Amend previous commit" },
+    { name = "-v", description = "Show diff in editor" },
+    { name = "-e", description = "Edit message" },
+    { name = "--no-edit", description = "Use selected commit message without editing" },
+    { name = "-s", description = "Add Signed-off-by trailer" },
+    { name = "-n", description = "Bypass pre-commit and commit-msg hooks" },
+    { name = "--allow-empty", description = "Allow empty commits" },
+]
+
+[completions.git.subcommands.checkout]
+description = "Switch branches or restore working tree files"
+options = [
+    { name = "-b", description = "Create and checkout new branch" },
+    { name = "-B", description = "Create/reset and checkout branch" },
+    { name = "-f", description = "Force checkout (discard local changes)" },
+    { name = "-q", description = "Quiet, suppress feedback" },
+    { name = "-t", description = "Track remote branch" },
+]
+positional = "git_branches"
+
+[completions.git.subcommands.switch]
+description = "Switch branches"
+options = [
+    { name = "-c", description = "Create and switch to new branch" },
+    { name = "-C", description = "Create/reset and switch to branch" },
+    { name = "-d", description = "Detach HEAD" },
+    { name = "-f", description = "Force switch (discard local changes)" },
+]
+positional = "git_branches"
+
+[completions.git.subcommands.branch]
+description = "List, create, or delete branches"
+options = [
+    { name = "-a", description = "List both local and remote branches" },
+    { name = "-r", description = "List remote branches" },
+    { name = "-d", description = "Delete branch" },
+    { name = "-D", description = "Force delete branch" },
+    { name = "-m", description = "Rename branch" },
+    { name = "-M", description = "Force rename branch" },
+    { name = "-v", description = "Show last commit" },
+    { name = "-vv", description = "Show upstream tracking info" },
+]
+positional = "git_branches"
+
+[completions.git.subcommands.push]
+description = "Update remote refs"
+options = [
+    { name = "-u", description = "Set upstream for current branch" },
+    { name = "-f", description = "Force push" },
+    { name = "--force-with-lease", description = "Safe force push" },
+    { name = "--tags", description = "Push all tags" },
+    { name = "-d", description = "Delete remote branch" },
+    { name = "-n", description = "Dry run" },
+]
+positional = "git_remotes"
+
+[completions.git.subcommands.pull]
+description = "Fetch from and integrate"
+options = [
+    { name = "--rebase", description = "Rebase instead of merge" },
+    { name = "--no-rebase", description = "Merge instead of rebase" },
+    { name = "-f", description = "Force fetch" },
+    { name = "-q", description = "Quiet" },
+    { name = "-v", description = "Verbose" },
+]
+positional = "git_remotes"
+
+[completions.git.subcommands.fetch]
+description = "Download objects and refs"
+options = [
+    { name = "--all", description = "Fetch all remotes" },
+    { name = "-p", description = "Prune deleted remote branches" },
+    { name = "-t", description = "Fetch tags" },
+    { name = "-f", description = "Force fetch" },
+    { name = "-q", description = "Quiet" },
+    { name = "-v", description = "Verbose" },
+]
+positional = "git_remotes"
+
+[completions.git.subcommands.merge]
+description = "Join development histories"
+options = [
+    { name = "--no-ff", description = "Create merge commit" },
+    { name = "--ff-only", description = "Fast-forward only" },
+    { name = "--squash", description = "Squash commits" },
+    { name = "--abort", description = "Abort merge" },
+    { name = "--continue", description = "Continue merge" },
+]
+positional = "git_branches"
+
+[completions.git.subcommands.rebase]
+description = "Reapply commits"
+options = [
+    { name = "-i", description = "Interactive rebase" },
+    { name = "--onto", description = "Rebase onto branch", takes_value = true, value_completer = "git_branches" },
+    { name = "--abort", description = "Abort rebase" },
+    { name = "--continue", description = "Continue rebase" },
+    { name = "--skip", description = "Skip current commit" },
+]
+positional = "git_branches"
+
+[completions.git.subcommands.stash]
+description = "Stash changes"
+options = [
+    { name = "-m", description = "Stash message", takes_value = true },
+    { name = "-u", description = "Include untracked files" },
+    { name = "-a", description = "Include ignored files" },
+    { name = "-p", description = "Interactive stashing" },
+]
+
+[completions.git.subcommands.log]
+description = "Show commit logs"
+options = [
+    { name = "--oneline", description = "One line per commit" },
+    { name = "--graph", description = "Show graph" },
+    { name = "--all", description = "Show all branches" },
+    { name = "-n", description = "Limit commits", takes_value = true },
+    { name = "--stat", description = "Show file stats" },
+    { name = "-p", description = "Show patches" },
+    { name = "--since", description = "Since date", takes_value = true },
+    { name = "--until", description = "Until date", takes_value = true },
+    { name = "--author", description = "Filter by author", takes_value = true },
+]
+
+[completions.git.subcommands.diff]
+description = "Show changes"
+options = [
+    { name = "--staged", description = "Show staged changes" },
+    { name = "--cached", description = "Show staged changes" },
+    { name = "--stat", description = "Show file stats" },
+    { name = "--name-only", description = "Show only file names" },
+    { name = "--name-status", description = "Show names and status" },
+    { name = "-w", description = "Ignore whitespace" },
+]
+positional = "files"
+
+[completions.git.subcommands.reset]
+description = "Reset HEAD"
+options = [
+    { name = "--soft", description = "Keep changes staged" },
+    { name = "--mixed", description = "Unstage changes (default)" },
+    { name = "--hard", description = "Discard all changes" },
+]
+positional = "git_branches"
+
+[completions.git.subcommands.tag]
+description = "Manage tags"
+options = [
+    { name = "-a", description = "Create annotated tag" },
+    { name = "-m", description = "Tag message", takes_value = true },
+    { name = "-d", description = "Delete tag" },
+    { name = "-l", description = "List tags" },
+    { name = "-f", description = "Force create/update" },
+]
+positional = "git_tags"
+
+[completions.git.subcommands.remote]
+description = "Manage remotes"
+options = [
+    { name = "-v", description = "Be verbose" },
+]
+
+[completions.git.subcommands.clone]
+description = "Clone a repository"
+options = [
+    { name = "--depth", description = "Shallow clone depth", takes_value = true },
+    { name = "--branch", description = "Clone specific branch", takes_value = true },
+    { name = "--single-branch", description = "Clone only one branch" },
+    { name = "--bare", description = "Create bare repository" },
+    { name = "-q", description = "Quiet" },
+]
+
+# Dynamic completers
+[completions.git.dynamic]
+git_branches = { command = "git branch --format='%(refname:short)' 2>/dev/null" }
+git_remotes = { command = "git remote 2>/dev/null" }
+git_tags = { command = "git tag 2>/dev/null" }

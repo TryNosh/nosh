@@ -69,3 +69,9 @@ pub fn themes_dir() -> PathBuf {
 pub fn init_file() -> PathBuf {
     nosh_config_dir().join("init.sh")
 }
+
+/// Returns the path to the completions directory.
+/// `~/.config/nosh/completions/`
+pub fn completions_dir() -> PathBuf {
+    nosh_config_dir().join("completions")
+}

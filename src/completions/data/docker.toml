@@ -1,0 +1,316 @@
+# Docker completion definitions for nosh
+
+[completions.docker]
+description = "Docker container platform"
+
+# Subcommands without detailed options
+[completions.docker.subcommands]
+commit = "Create a new image from a container's changes"
+container = "Manage containers"
+context = "Manage contexts"
+create = "Create a new container"
+diff = "Inspect changes to files in container"
+events = "Get real time events from server"
+export = "Export container's filesystem as tar"
+history = "Show history of an image"
+image = "Manage images"
+import = "Import contents from a tarball"
+info = "Display system-wide information"
+kill = "Kill one or more running containers"
+load = "Load an image from a tar archive"
+login = "Log in to a registry"
+logout = "Log out from a registry"
+manifest = "Manage Docker image manifests"
+node = "Manage Swarm nodes"
+pause = "Pause all processes in containers"
+plugin = "Manage plugins"
+port = "List port mappings for container"
+rename = "Rename a container"
+save = "Save images to a tar archive"
+search = "Search Docker Hub for images"
+secret = "Manage secrets"
+service = "Manage Swarm services"
+stack = "Manage Swarm stacks"
+stats = "Display live resource usage"
+swarm = "Manage Swarm"
+top = "Display running processes of container"
+trust = "Manage trust on Docker images"
+unpause = "Unpause all processes in containers"
+update = "Update configuration of containers"
+version = "Show Docker version information"
+wait = "Block until containers stop"
+
+[completions.docker.options]
+"--help" = "Print help"
+"-h" = "Print help"
+"--version" = "Print version"
+"-v" = "Print version"
+"--config" = { description = "Location of client config files", takes_value = true, value_completer = "directories" }
+"-H" = { description = "Daemon socket to connect to", takes_value = true }
+"--host" = { description = "Daemon socket to connect to", takes_value = true }
+"--context" = { description = "Name of context to use", takes_value = true }
+"-c" = { description = "Name of context to use", takes_value = true }
+"-D" = "Enable debug mode"
+"--debug" = "Enable debug mode"
+
+# Subcommand-specific completions
+[completions.docker.subcommands.run]
+description = "Create and run a new container"
+options = [
+    { name = "-d", description = "Run in detached mode" },
+    { name = "--detach", description = "Run in detached mode" },
+    { name = "-i", description = "Keep STDIN open" },
+    { name = "--interactive", description = "Keep STDIN open" },
+    { name = "-t", description = "Allocate a pseudo-TTY" },
+    { name = "--tty", description = "Allocate a pseudo-TTY" },
+    { name = "--rm", description = "Remove container when it exits" },
+    { name = "--name", description = "Assign a name to the container", takes_value = true },
+    { name = "-p", description = "Publish port (host:container)", takes_value = true },
+    { name = "--publish", description = "Publish port (host:container)", takes_value = true },
+    { name = "-P", description = "Publish all exposed ports" },
+    { name = "--publish-all", description = "Publish all exposed ports" },
+    { name = "-v", description = "Bind mount a volume", takes_value = true },
+    { name = "--volume", description = "Bind mount a volume", takes_value = true },
+    { name = "--mount", description = "Attach a filesystem mount", takes_value = true },
+    { name = "-e", description = "Set environment variable", takes_value = true },
+    { name = "--env", description = "Set environment variable", takes_value = true },
+    { name = "--env-file", description = "Read env vars from file", takes_value = true, value_completer = "files" },
+    { name = "-w", description = "Working directory inside container", takes_value = true },
+    { name = "--workdir", description = "Working directory inside container", takes_value = true },
+    { name = "-u", description = "Username or UID", takes_value = true },
+    { name = "--user", description = "Username or UID", takes_value = true },
+    { name = "--network", description = "Connect to a network", takes_value = true, value_completer = "docker_networks" },
+    { name = "--restart", description = "Restart policy", takes_value = true },
+    { name = "--memory", description = "Memory limit", takes_value = true },
+    { name = "-m", description = "Memory limit", takes_value = true },
+    { name = "--cpus", description = "Number of CPUs", takes_value = true },
+    { name = "--entrypoint", description = "Overwrite default ENTRYPOINT", takes_value = true },
+    { name = "--platform", description = "Set platform", takes_value = true },
+    { name = "--privileged", description = "Give extended privileges" },
+    { name = "--cap-add", description = "Add Linux capabilities", takes_value = true },
+    { name = "--cap-drop", description = "Drop Linux capabilities", takes_value = true },
+    { name = "-l", description = "Set metadata on container", takes_value = true },
+    { name = "--label", description = "Set metadata on container", takes_value = true },
+]
+positional = "docker_images"
+
+[completions.docker.subcommands.exec]
+description = "Execute command in running container"
+options = [
+    { name = "-d", description = "Detached mode" },
+    { name = "--detach", description = "Detached mode" },
+    { name = "-i", description = "Keep STDIN open" },
+    { name = "--interactive", description = "Keep STDIN open" },
+    { name = "-t", description = "Allocate a pseudo-TTY" },
+    { name = "--tty", description = "Allocate a pseudo-TTY" },
+    { name = "-e", description = "Set environment variable", takes_value = true },
+    { name = "--env", description = "Set environment variable", takes_value = true },
+    { name = "-u", description = "Username or UID", takes_value = true },
+    { name = "--user", description = "Username or UID", takes_value = true },
+    { name = "-w", description = "Working directory", takes_value = true },
+    { name = "--workdir", description = "Working directory", takes_value = true },
+    { name = "--privileged", description = "Give extended privileges" },
+]
+positional = "docker_containers"
+
+[completions.docker.subcommands.build]
+description = "Build an image from a Dockerfile"
+options = [
+    { name = "-t", description = "Name and optionally tag", takes_value = true },
+    { name = "--tag", description = "Name and optionally tag", takes_value = true },
+    { name = "-f", description = "Name of the Dockerfile", takes_value = true, value_completer = "files" },
+    { name = "--file", description = "Name of the Dockerfile", takes_value = true, value_completer = "files" },
+    { name = "--build-arg", description = "Set build-time variables", takes_value = true },
+    { name = "--target", description = "Set target build stage", takes_value = true },
+    { name = "--platform", description = "Set platform", takes_value = true },
+    { name = "--no-cache", description = "Do not use cache when building" },
+    { name = "--pull", description = "Always pull a newer version of image" },
+    { name = "--progress", description = "Set type of progress output", takes_value = true },
+    { name = "-q", description = "Suppress build output" },
+    { name = "--quiet", description = "Suppress build output" },
+    { name = "--rm", description = "Remove intermediate containers" },
+    { name = "--squash", description = "Squash newly built layers" },
+]
+positional = "directories"
+
+[completions.docker.subcommands.pull]
+description = "Download an image"
+options = [
+    { name = "-a", description = "Download all tagged images" },
+    { name = "--all-tags", description = "Download all tagged images" },
+    { name = "--platform", description = "Set platform", takes_value = true },
+    { name = "-q", description = "Suppress verbose output" },
+    { name = "--quiet", description = "Suppress verbose output" },
+]
+
+[completions.docker.subcommands.push]
+description = "Upload an image"
+options = [
+    { name = "-a", description = "Push all tagged images" },
+    { name = "--all-tags", description = "Push all tagged images" },
+    { name = "-q", description = "Suppress verbose output" },
+    { name = "--quiet", description = "Suppress verbose output" },
+]
+positional = "docker_images"
+
+[completions.docker.subcommands.ps]
+description = "List containers"
+options = [
+    { name = "-a", description = "Show all containers" },
+    { name = "--all", description = "Show all containers" },
+    { name = "-f", description = "Filter output", takes_value = true },
+    { name = "--filter", description = "Filter output", takes_value = true },
+    { name = "--format", description = "Format output", takes_value = true },
+    { name = "-n", description = "Show n last created containers", takes_value = true },
+    { name = "--last", description = "Show n last created containers", takes_value = true },
+    { name = "-l", description = "Show latest created container" },
+    { name = "--latest", description = "Show latest created container" },
+    { name = "--no-trunc", description = "Don't truncate output" },
+    { name = "-q", description = "Only display container IDs" },
+    { name = "--quiet", description = "Only display container IDs" },
+    { name = "-s", description = "Display total file sizes" },
+    { name = "--size", description = "Display total file sizes" },
+]
+
+[completions.docker.subcommands.images]
+description = "List images"
+options = [
+    { name = "-a", description = "Show all images" },
+    { name = "--all", description = "Show all images" },
+    { name = "-f", description = "Filter output", takes_value = true },
+    { name = "--filter", description = "Filter output", takes_value = true },
+    { name = "--format", description = "Format output", takes_value = true },
+    { name = "--no-trunc", description = "Don't truncate output" },
+    { name = "-q", description = "Only show image IDs" },
+    { name = "--quiet", description = "Only show image IDs" },
+    { name = "--digests", description = "Show digests" },
+]
+
+[completions.docker.subcommands.logs]
+description = "Fetch container logs"
+options = [
+    { name = "-f", description = "Follow log output" },
+    { name = "--follow", description = "Follow log output" },
+    { name = "--since", description = "Show logs since timestamp", takes_value = true },
+    { name = "--until", description = "Show logs before timestamp", takes_value = true },
+    { name = "-n", description = "Number of lines to show", takes_value = true },
+    { name = "--tail", description = "Number of lines to show", takes_value = true },
+    { name = "-t", description = "Show timestamps" },
+    { name = "--timestamps", description = "Show timestamps" },
+]
+positional = "docker_containers"
+
+[completions.docker.subcommands.stop]
+description = "Stop one or more running containers"
+options = [
+    { name = "-t", description = "Seconds to wait before killing", takes_value = true },
+    { name = "--time", description = "Seconds to wait before killing", takes_value = true },
+]
+positional = "docker_containers"
+
+[completions.docker.subcommands.start]
+description = "Start one or more stopped containers"
+options = [
+    { name = "-a", description = "Attach STDOUT/STDERR and forward signals" },
+    { name = "--attach", description = "Attach STDOUT/STDERR and forward signals" },
+    { name = "-i", description = "Attach container's STDIN" },
+    { name = "--interactive", description = "Attach container's STDIN" },
+]
+positional = "docker_containers"
+
+[completions.docker.subcommands.restart]
+description = "Restart one or more containers"
+options = [
+    { name = "-t", description = "Seconds to wait before killing", takes_value = true },
+    { name = "--time", description = "Seconds to wait before killing", takes_value = true },
+]
+positional = "docker_containers"
+
+[completions.docker.subcommands.rm]
+description = "Remove one or more containers"
+options = [
+    { name = "-f", description = "Force removal of running container" },
+    { name = "--force", description = "Force removal of running container" },
+    { name = "-l", description = "Remove the specified link" },
+    { name = "--link", description = "Remove the specified link" },
+    { name = "-v", description = "Remove anonymous volumes" },
+    { name = "--volumes", description = "Remove anonymous volumes" },
+]
+positional = "docker_containers"
+
+[completions.docker.subcommands.rmi]
+description = "Remove one or more images"
+options = [
+    { name = "-f", description = "Force removal of the image" },
+    { name = "--force", description = "Force removal of the image" },
+    { name = "--no-prune", description = "Do not delete untagged parents" },
+]
+positional = "docker_images"
+
+[completions.docker.subcommands.tag]
+description = "Create a tag TARGET_IMAGE that refers to SOURCE_IMAGE"
+positional = "docker_images"
+
+[completions.docker.subcommands.inspect]
+description = "Return low-level information on Docker objects"
+options = [
+    { name = "-f", description = "Format output", takes_value = true },
+    { name = "--format", description = "Format output", takes_value = true },
+    { name = "-s", description = "Display total file sizes" },
+    { name = "--size", description = "Display total file sizes" },
+    { name = "--type", description = "Return JSON for specified type", takes_value = true },
+]
+positional = "docker_containers"
+
+[completions.docker.subcommands.cp]
+description = "Copy files between container and host"
+options = [
+    { name = "-a", description = "Archive mode (copy uid/gid info)" },
+    { name = "--archive", description = "Archive mode (copy uid/gid info)" },
+    { name = "-L", description = "Always follow symlinks" },
+    { name = "--follow-link", description = "Always follow symlinks" },
+    { name = "-q", description = "Suppress progress output" },
+    { name = "--quiet", description = "Suppress progress output" },
+]
+
+[completions.docker.subcommands.attach]
+description = "Attach to a running container"
+options = [
+    { name = "--detach-keys", description = "Override detach key sequence", takes_value = true },
+    { name = "--no-stdin", description = "Do not attach STDIN" },
+    { name = "--sig-proxy", description = "Proxy all received signals (default true)" },
+]
+positional = "docker_containers"
+
+[completions.docker.subcommands.network]
+description = "Manage networks"
+options = [
+    { name = "-f", description = "Filter output", takes_value = true },
+    { name = "--filter", description = "Filter output", takes_value = true },
+    { name = "--format", description = "Format output", takes_value = true },
+    { name = "-q", description = "Only display network IDs" },
+    { name = "--quiet", description = "Only display network IDs" },
+]
+
+[completions.docker.subcommands.volume]
+description = "Manage volumes"
+options = [
+    { name = "-f", description = "Filter output", takes_value = true },
+    { name = "--filter", description = "Filter output", takes_value = true },
+    { name = "--format", description = "Format output", takes_value = true },
+    { name = "-q", description = "Only display volume names" },
+    { name = "--quiet", description = "Only display volume names" },
+]
+
+[completions.docker.subcommands.system]
+description = "Manage Docker"
+
+[completions.docker.subcommands.compose]
+description = "Docker Compose"
+
+# Dynamic completers
+[completions.docker.dynamic]
+docker_containers = { command = "docker ps --format '{{.Names}}' 2>/dev/null" }
+docker_images = { command = "docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | grep -v '<none>'" }
+docker_volumes = { command = "docker volume ls --format '{{.Name}}' 2>/dev/null" }
+docker_networks = { command = "docker network ls --format '{{.Name}}' 2>/dev/null" }

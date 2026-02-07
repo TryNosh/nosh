@@ -1,5 +1,6 @@
 mod ai;
 mod auth;
+mod completions;
 mod config;
 mod exec;
 mod history;
@@ -62,15 +63,38 @@ async fn main() -> Result<()> {
     if args.iter().any(|a| a == "--help" || a == "-h") {
         println!("nosh v{}", env!("CARGO_PKG_VERSION"));
         println!("Natural language shell powered by AI\n");
-        println!("Usage: nosh [OPTIONS]\n");
-        println!("Options:");
-        println!("  --setup    Run setup wizard to configure AI backend");
-        println!("  --help     Show this help message");
+        println!("Usage: nosh [COMMAND] [OPTIONS]\n");
+        println!("Commands:");
+        println!("  convert-zsh FILE   Convert zsh completion file to nosh TOML format");
+        println!("\nOptions:");
+        println!("  --setup            Run setup wizard to configure AI backend");
+        println!("  --help             Show this help message");
         println!("\nIn the shell:");
         println!("  command    Run command directly");
         println!("  ?query     Translate natural language to command via AI");
         println!("  exit       Quit nosh");
         return Ok(());
+    }
+
+    // Handle convert-zsh subcommand
+    if args.get(1).map(|s| s.as_str()) == Some("convert-zsh") {
+        if let Some(path) = args.get(2) {
+            let path = std::path::Path::new(path);
+            match completions::convert_zsh_file(path) {
+                Ok(toml) => {
+                    println!("{}", toml);
+                    return Ok(());
+                }
+                Err(e) => {
+                    eprintln!("Error converting zsh completion: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        } else {
+            eprintln!("Error: convert-zsh requires a file path");
+            eprintln!("Usage: nosh convert-zsh /path/to/zsh/completion");
+            std::process::exit(1);
+        }
     }
 
     // Handle --setup flag
@@ -142,13 +166,14 @@ async fn main() -> Result<()> {
             }
             Some(line) if line == "/help" => {
                 println!("\nBuilt-in commands:");
-                println!("  /setup    Run setup wizard to switch AI backend");
-                println!("  /usage    Show usage, balance, and manage subscription");
-                println!("  /buy      Buy tokens or subscribe to a plan");
-                println!("  /nosh     Manage nosh config files");
-                println!("  /clear    Clear AI conversation context");
-                println!("  /help     Show this help");
-                println!("  exit      Quit nosh");
+                println!("  /setup              Run setup wizard to switch AI backend");
+                println!("  /usage              Show usage, balance, and manage subscription");
+                println!("  /buy                Buy tokens or subscribe to a plan");
+                println!("  /nosh               Manage nosh config files");
+                println!("  /convert-zsh FILE   Convert zsh completion to nosh TOML");
+                println!("  /clear              Clear AI conversation context");
+                println!("  /help               Show this help");
+                println!("  exit                Quit nosh");
                 println!("\nUsage:");
                 println!("  command   Run command directly");
                 println!("  ?query    Translate natural language via AI");
@@ -158,6 +183,23 @@ async fn main() -> Result<()> {
             Some(line) if line == "/clear" => {
                 ai_context.clear();
                 println!("AI context cleared.");
+                continue;
+            }
+            Some(line) if line.starts_with("/convert-zsh ") => {
+                let path = line.strip_prefix("/convert-zsh ").unwrap().trim();
+                if path.is_empty() {
+                    eprintln!("Usage: /convert-zsh /path/to/zsh/completion");
+                    continue;
+                }
+                let path = std::path::Path::new(path);
+                match completions::convert_zsh_file(path) {
+                    Ok(toml) => println!("{}", toml),
+                    Err(e) => eprintln!("Error: {}", e),
+                }
+                continue;
+            }
+            Some(line) if line == "/convert-zsh" => {
+                eprintln!("Usage: /convert-zsh /path/to/zsh/completion");
                 continue;
             }
             Some(line) if line == "/usage" || line == "/tokens" || line == "/plan" => {
@@ -359,6 +401,7 @@ async fn main() -> Result<()> {
                     "Open config directory",
                     "Edit config file",
                     "Update config files to latest",
+                    "Install/update completions",
                     "Back",
                 ];
 
@@ -451,6 +494,48 @@ async fn main() -> Result<()> {
                                 // Reload theme and plugins
                                 repl.reload("default");
                                 println!("\nConfig reloaded!");
+                            }
+                        }
+                    }
+                    Ok(Some(3)) => {
+                        // Install/update completions
+                        let completion_files = [
+                            ConfigFile::GitCompletion,
+                            ConfigFile::CargoCompletion,
+                            ConfigFile::NpmCompletion,
+                            ConfigFile::DockerCompletion,
+                        ];
+
+                        let labels: Vec<String> = completion_files
+                            .iter()
+                            .map(|f| {
+                                let status = if f.path().exists() {
+                                    if config_needs_update(*f) { "(update available)" } else { "(installed)" }
+                                } else {
+                                    "(not installed)"
+                                };
+                                format!("{} {}", f.display_name(), status)
+                            })
+                            .collect();
+
+                        let selections = MultiSelect::with_theme(&ColorfulTheme::default())
+                            .with_prompt("Select completions to install/update")
+                            .items(&labels)
+                            .defaults(&vec![true; labels.len()])
+                            .interact_opt();
+
+                        if let Ok(Some(indices)) = selections {
+                            if indices.is_empty() {
+                                println!("No completions selected.");
+                            } else {
+                                for idx in &indices {
+                                    let file = completion_files[*idx];
+                                    match update_config(file) {
+                                        Ok(_) => println!("  Installed: {}", file.display_name()),
+                                        Err(e) => eprintln!("  Error installing {}: {}", file.display_name(), e),
+                                    }
+                                }
+                                println!("\nCompletions installed to {}", paths::completions_dir().display());
                             }
                         }
                     }

@@ -1,3 +1,4 @@
+mod helper;
 mod readline;
 mod sqlite_history;
 
