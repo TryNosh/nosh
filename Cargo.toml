@@ -27,3 +27,4 @@ hostname = "0.4"
 regex = "1"
 nosh-context = { path = "nosh-context" }
 rusqlite = { version = "0.31", features = ["bundled"] }
+termimad = "0.30"

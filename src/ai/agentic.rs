@@ -141,20 +141,6 @@ impl AgenticSession {
     }
 }
 
-/// Format agentic output for display.
-pub fn format_step_output(command: &str, output: &str, iteration: usize) -> String {
-    let truncated = if output.len() > 1000 {
-        format!("{}...\n(output truncated)", &output[..1000])
-    } else {
-        output.to_string()
-    };
-
-    format!(
-        "\x1b[36m[Step {}]\x1b[0m Running: {}\n{}",
-        iteration, command, truncated
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

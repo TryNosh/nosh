@@ -1,0 +1,77 @@
+//! Common English words for AI mode autocomplete.
+
+/// Common English words for natural language completion.
+/// Focused on words useful for describing tasks, files, and system operations.
+pub const COMMON_WORDS: &[&str] = &[
+    // Question words
+    "what", "where", "when", "which", "who", "why", "how",
+    // Common verbs
+    "find", "show", "list", "delete", "remove", "create", "make", "move", "copy",
+    "rename", "search", "install", "uninstall", "update", "upgrade", "download",
+    "upload", "open", "close", "start", "stop", "restart", "run", "execute",
+    "build", "compile", "test", "check", "verify", "clean", "clear", "reset",
+    "change", "modify", "edit", "view", "display", "print", "write", "read",
+    "save", "load", "import", "export", "convert", "compress", "extract",
+    "archive", "backup", "restore", "sync", "push", "pull", "fetch", "merge",
+    "commit", "checkout", "branch", "clone", "init", "add", "stage",
+    "kill", "terminate", "monitor", "watch", "log", "debug", "trace",
+    // Common nouns
+    "file", "files", "folder", "folders", "directory", "directories", "path",
+    "disk", "space", "memory", "cpu", "process", "processes", "service", "services",
+    "package", "packages", "dependency", "dependencies", "module", "modules",
+    "user", "users", "group", "groups", "permission", "permissions",
+    "network", "port", "ports", "connection", "connections", "server", "client",
+    "database", "table", "record", "records", "data", "config", "configuration",
+    "setting", "settings", "option", "options", "variable", "variables",
+    "environment", "container", "containers", "image", "images", "volume", "volumes",
+    "log", "logs", "error", "errors", "warning", "warnings", "output", "input",
+    "version", "versions", "release", "releases", "branch", "branches", "tag", "tags",
+    "commit", "commits", "change", "changes", "diff", "history", "status",
+    "size", "sizes", "count", "total", "average", "maximum", "minimum",
+    "name", "names", "type", "types", "format", "extension", "content", "contents",
+    // Common adjectives
+    "all", "any", "each", "every", "large", "largest", "small", "smallest",
+    "big", "biggest", "old", "oldest", "new", "newest", "recent", "latest",
+    "first", "last", "next", "previous", "current", "active", "inactive",
+    "hidden", "visible", "empty", "full", "available", "running", "stopped",
+    "installed", "uninstalled", "enabled", "disabled", "open", "closed",
+    "local", "remote", "public", "private", "global", "system", "custom",
+    "default", "modified", "created", "deleted", "updated", "changed",
+    "unused", "duplicate", "missing", "broken", "failed", "successful",
+    // Prepositions and connectors
+    "in", "on", "at", "to", "from", "by", "with", "without", "for", "of",
+    "into", "onto", "under", "over", "between", "among", "through", "across",
+    "before", "after", "since", "until", "during", "about", "around",
+    "than", "that", "this", "these", "those", "here", "there",
+    "and", "or", "but", "not", "also", "only", "just", "even",
+    // Tech-specific
+    "git", "docker", "npm", "yarn", "pip", "cargo", "brew", "apt",
+    "node", "python", "rust", "java", "ruby", "golang",
+    "linux", "macos", "windows", "ubuntu", "debian",
+    "terminal", "shell", "bash", "zsh", "command", "commands",
+    "script", "scripts", "binary", "binaries", "executable", "executables",
+    "root", "home", "tmp", "temp", "cache", "trash", "desktop", "documents",
+    "localhost", "hostname", "ip", "address", "url", "http", "https", "ssh",
+    // Possessives and common phrases
+    "my", "the", "a", "an", "is", "are", "was", "were", "be", "been",
+    "have", "has", "had", "do", "does", "did", "can", "could", "will", "would",
+    "should", "must", "need", "want", "like", "using", "eating", "taking",
+    // Size/space related
+    "bytes", "kilobytes", "megabytes", "gigabytes", "terabytes",
+    "kb", "mb", "gb", "tb", "storage", "quota", "usage", "free", "used",
+];
+
+/// Get word completions for the given prefix.
+pub fn complete_words(prefix: &str) -> Vec<&'static str> {
+    if prefix.is_empty() {
+        return Vec::new();
+    }
+
+    let prefix_lower = prefix.to_lowercase();
+    COMMON_WORDS
+        .iter()
+        .filter(|w| w.starts_with(&prefix_lower))
+        .copied()
+        .take(10)
+        .collect()
+}

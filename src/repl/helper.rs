@@ -9,6 +9,7 @@ use rustyline::hint::Hinter;
 use rustyline::validate::{ValidationContext, ValidationResult, Validator};
 use rustyline::{Context, Helper};
 
+use super::words;
 use crate::completions::{Completion, CompletionManager};
 
 /// Rustyline helper providing completions, hints, and highlighting.
@@ -65,6 +66,11 @@ impl Completer for NoshHelper {
         pos: usize,
         _ctx: &Context<'_>,
     ) -> rustyline::Result<(usize, Vec<Self::Candidate>)> {
+        // Check if we're in AI mode (line starts with ? or ??)
+        if line.starts_with('?') {
+            return self.complete_ai_mode(line, pos);
+        }
+
         let completions = self.completion_manager.complete(line, pos);
         let start = find_word_start(line, pos);
 
@@ -75,6 +81,42 @@ impl Completer for NoshHelper {
 
         Ok((start, candidates))
     }
+}
+
+impl NoshHelper {
+    /// Complete in AI mode using English word list.
+    fn complete_ai_mode(
+        &self,
+        line: &str,
+        pos: usize,
+    ) -> rustyline::Result<(usize, Vec<NoshCandidate>)> {
+        // Find the start of the current word (space-separated for natural language)
+        let start = find_word_start_simple(line, pos);
+        let prefix = &line[start..pos];
+
+        // Get word completions
+        let candidates: Vec<NoshCandidate> = words::complete_words(prefix)
+            .into_iter()
+            .map(|w| NoshCandidate {
+                text: w.to_string(),
+                display: w.to_string(),
+            })
+            .collect();
+
+        Ok((start, candidates))
+    }
+}
+
+/// Find word start for natural language (simple space-based).
+fn find_word_start_simple(line: &str, pos: usize) -> usize {
+    let bytes = line[..pos].as_bytes();
+    let mut start = pos;
+
+    while start > 0 && bytes[start - 1] != b' ' && bytes[start - 1] != b'\t' {
+        start -= 1;
+    }
+
+    start
 }
 
 impl Hinter for NoshHelper {
@@ -91,7 +133,22 @@ impl Hinter for NoshHelper {
             return None;
         }
 
-        // Get completions
+        // AI mode hints
+        if line.starts_with('?') {
+            let word_start = find_word_start_simple(line, pos);
+            let current_word = &line[word_start..pos];
+
+            if current_word.len() < 2 {
+                return None;
+            }
+
+            return words::complete_words(current_word)
+                .first()
+                .filter(|w| w.len() > current_word.len())
+                .map(|w| w[current_word.len()..].to_string());
+        }
+
+        // Get completions for shell commands
         let completions = self.completion_manager.complete(line, pos);
 
         // Find completion that starts with current word
@@ -107,8 +164,24 @@ impl Hinter for NoshHelper {
 
 impl Highlighter for NoshHelper {
     fn highlight<'l>(&self, line: &'l str, _pos: usize) -> Cow<'l, str> {
-        // No syntax highlighting for now - return line unchanged
-        Cow::Borrowed(line)
+        // Style ?? and ? with elegant formatting (preserve length for cursor)
+        if line.starts_with("??") {
+            let rest = &line[2..];
+            // Bold purple "??" with glow effect
+            Cow::Owned(format!(
+                "\x1b[1m\x1b[38;5;135m??\x1b[0m\x1b[38;5;250m{}\x1b[0m",
+                rest
+            ))
+        } else if line.starts_with('?') {
+            let rest = &line[1..];
+            // Bold cyan "?" with glow effect
+            Cow::Owned(format!(
+                "\x1b[1m\x1b[38;5;45m?\x1b[0m\x1b[38;5;250m{}\x1b[0m",
+                rest
+            ))
+        } else {
+            Cow::Borrowed(line)
+        }
     }
 
     fn highlight_prompt<'b, 's: 'b, 'p: 'b>(
@@ -148,6 +221,11 @@ impl Highlighter for NoshHelper {
 impl Validator for NoshHelper {
     fn validate(&self, ctx: &mut ValidationContext) -> rustyline::Result<ValidationResult> {
         let line = ctx.input();
+
+        // Skip quote validation for AI queries - they're natural language, not shell commands
+        if line.starts_with('?') || line.starts_with('/') {
+            return Ok(ValidationResult::Valid(None));
+        }
 
         // Check for unclosed quotes
         let mut in_single = false;

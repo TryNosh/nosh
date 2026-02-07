@@ -9,11 +9,13 @@ mod paths;
 mod plugins;
 mod repl;
 mod safety;
+mod ui;
 
 use ai::{
     AgenticConfig, AgenticSession, AgenticStep, CloudClient, CommandPermission,
-    ConversationContext, OllamaClient, format_step_output,
+    ConversationContext, OllamaClient,
 };
+use ui::{format_step, format_output, format_translated_command, format_header, format_result, format_error};
 use plugins::builtins::{install_builtins, ConfigFile, update_config, config_needs_update};
 use dialoguer::{theme::ColorfulTheme, Select, MultiSelect};
 
@@ -586,17 +588,18 @@ async fn main() -> Result<()> {
                 let mut session = AgenticSession::new(agentic_config);
                 let mut executions: Vec<(String, String, i32)> = Vec::new();
 
-                println!("\n\x1b[36m[Agentic Mode]\x1b[0m Investigating: {}\n", input);
+                println!("{}", format_header("Investigating", input));
 
                 // Agentic loop
                 loop {
                     // Check limits
                     if let Err(msg) = session.check_limits() {
-                        eprintln!("\x1b[33m[Limit reached]\x1b[0m {}", msg);
+                        eprintln!("{}", format_error(&msg));
                         break;
                     }
 
                     // Get next step from AI
+                    println!(); // Separate from previous step
                     let ai_spinner = ProgressBar::new_spinner();
                     ai_spinner.set_style(
                         ProgressStyle::default_spinner()
@@ -625,10 +628,6 @@ async fn main() -> Result<()> {
 
                     match step {
                         AgenticStep::RunCommand { command, reasoning } => {
-                            if let Some(reason) = reasoning {
-                                println!("\x1b[90m  → {}\x1b[0m", reason);
-                            }
-
                             // Check permissions
                             let permission =
                                 session.check_permission(&command, &cwd, &permissions);
@@ -691,10 +690,7 @@ async fn main() -> Result<()> {
                             }
 
                             // Execute the command and capture output
-                            print!(
-                                "{}",
-                                format_step_output(&command, "", session.iterations())
-                            );
+                            println!("{}", format_step(session.iterations(), &command, reasoning.as_deref()));
 
                             // Show spinner while command runs
                             let spinner = ProgressBar::new_spinner();
@@ -724,14 +720,10 @@ async fn main() -> Result<()> {
                                         format!("{}\n{}", stdout, stderr)
                                     };
 
-                                    // Print truncated output
-                                    let display = if combined.len() > 1000 {
-                                        format!("{}...", &combined[..1000])
-                                    } else {
-                                        combined.clone()
-                                    };
-                                    if !display.trim().is_empty() {
-                                        println!("{}", display);
+                                    // Print output in dimmed box
+                                    let formatted = format_output(&combined);
+                                    if !formatted.is_empty() {
+                                        println!("{}", formatted);
                                     }
 
                                     (combined, out.status.code().unwrap_or(1))
@@ -746,13 +738,13 @@ async fn main() -> Result<()> {
                             executions.push((command, output.0, output.1));
                         }
                         AgenticStep::FinalResponse { message } => {
-                            println!("\n\x1b[32m[Result]\x1b[0m {}\n", message);
+                            println!("{}", format_result(&message));
                             // Record in context
                             ai_context.add_exchange(input, &format!("[agentic] {}", message));
                             break;
                         }
                         AgenticStep::Error { message } => {
-                            eprintln!("\x1b[31m[Error]\x1b[0m {}", message);
+                            eprintln!("{}", format_error(&message));
                             break;
                         }
                     }
@@ -794,13 +786,13 @@ async fn main() -> Result<()> {
 
                 let command = match result {
                     Ok(cmd) => {
-                        println!("⚡ {}", cmd);
+                        println!("{}", format_translated_command(&cmd));
                         // Record exchange in context (before execution, in case it fails)
                         ai_context.add_exchange(input, &cmd);
                         cmd
                     }
                     Err(e) => {
-                        eprintln!("AI error: {}", e);
+                        eprintln!("{}", format_error(&e.to_string()));
                         continue;
                     }
                 };
