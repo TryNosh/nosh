@@ -139,7 +139,9 @@ impl CloudClient {
             .send()
             .await?;
 
-        if response.status() == 402 {
+        let status = response.status();
+
+        if status == 402 {
             let error: ErrorResponse = response.json().await.unwrap_or(ErrorResponse {
                 error: "Out of tokens".to_string(),
                 code: None,
@@ -149,7 +151,17 @@ impl CloudClient {
             return Err(anyhow!("Out of tokens. {}", msg));
         }
 
-        if !response.status().is_success() {
+        if status == 503 {
+            let error: ErrorResponse = response.json().await.unwrap_or(ErrorResponse {
+                error: "Free tier at capacity".to_string(),
+                code: None,
+                message: Some("Subscribe for guaranteed access".to_string()),
+            });
+            let msg = error.message.unwrap_or_else(|| "Subscribe for guaranteed access".to_string());
+            return Err(anyhow!("Free tier at capacity. {}", msg));
+        }
+
+        if !status.is_success() {
             let error: ErrorResponse = response.json().await?;
             return Err(anyhow!("Cloud error: {}", error.error));
         }
@@ -252,6 +264,22 @@ impl CloudClient {
         Ok(())
     }
 
+    pub async fn reactivate_subscription(&self) -> Result<()> {
+        let response = self
+            .client
+            .post(format!("{}/billing/reactivate", self.base_url))
+            .header("Authorization", format!("Bearer {}", self.token))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let error: ErrorResponse = response.json().await?;
+            return Err(anyhow!("{}", error.error));
+        }
+
+        Ok(())
+    }
+
     pub async fn get_portal_url(&self) -> Result<String> {
         let response = self
             .client
@@ -320,7 +348,9 @@ impl CloudClient {
             .send()
             .await?;
 
-        if response.status() == 402 {
+        let status = response.status();
+
+        if status == 402 {
             let error: ErrorResponse = response.json().await.unwrap_or(ErrorResponse {
                 error: "Out of tokens".to_string(),
                 code: None,
@@ -334,7 +364,21 @@ impl CloudClient {
             });
         }
 
-        if !response.status().is_success() {
+        if status == 403 {
+            let error: ErrorResponse = response.json().await.unwrap_or(ErrorResponse {
+                error: "Subscription required".to_string(),
+                code: None,
+                message: Some("Agentic mode requires a paid subscription. Use ? for free queries.".to_string()),
+            });
+            let msg = error
+                .message
+                .unwrap_or_else(|| "Agentic mode requires a paid subscription".to_string());
+            return Ok(AgenticStep::Error {
+                message: msg,
+            });
+        }
+
+        if !status.is_success() {
             let error: ErrorResponse = response.json().await?;
             return Ok(AgenticStep::Error {
                 message: error.error,

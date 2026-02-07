@@ -63,6 +63,7 @@ impl ConversationContext {
     }
 
     /// Format context for inclusion in AI prompt.
+    #[cfg(test)]
     pub fn format_for_prompt(&self) -> String {
         if self.exchanges.is_empty() {
             return String::new();

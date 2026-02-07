@@ -7,6 +7,9 @@ use crate::paths;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
+    /// User has completed or skipped onboarding
+    #[serde(default)]
+    pub onboarding_complete: bool,
     pub ai: AiConfig,
     pub behavior: BehaviorConfig,
     pub prompt: PromptConfig,
@@ -16,15 +19,9 @@ pub struct Config {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AiConfig {
-    /// AI backend: "ollama" or "cloud"
-    pub backend: String,
-    /// Model name for Ollama
-    pub model: String,
-    /// Ollama API base URL
-    pub ollama_url: String,
     /// Number of recent exchanges to include as context (default: 10)
     pub context_size: usize,
-    /// Enable agentic mode for investigative queries (cloud only)
+    /// Enable agentic mode for investigative queries
     pub agentic_enabled: bool,
     /// Maximum command executions per agentic query
     pub max_iterations: usize,
@@ -57,6 +54,7 @@ pub struct HistoryConfig {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            onboarding_complete: false,
             ai: AiConfig::default(),
             behavior: BehaviorConfig::default(),
             prompt: PromptConfig::default(),
@@ -68,9 +66,6 @@ impl Default for Config {
 impl Default for AiConfig {
     fn default() -> Self {
         Self {
-            backend: "ollama".to_string(),
-            model: "llama3.2".to_string(),
-            ollama_url: "http://localhost:11434".to_string(),
             context_size: 10,
             agentic_enabled: true,
             max_iterations: 10,
@@ -104,11 +99,6 @@ impl Default for HistoryConfig {
 }
 
 impl Config {
-    /// Check if config file exists (for determining if onboarding is needed)
-    pub fn exists() -> bool {
-        paths::config_file().exists()
-    }
-
     pub fn load() -> Result<Self> {
         let path = paths::config_file();
 

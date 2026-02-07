@@ -13,7 +13,7 @@ mod ui;
 
 use ai::{
     AgenticConfig, AgenticSession, AgenticStep, CloudClient, CommandPermission,
-    ConversationContext, OllamaClient,
+    ConversationContext,
 };
 use ui::{format_step, format_output, format_translated_command, format_header, format_result, format_error};
 use plugins::builtins::{install_builtins, ConfigFile, update_config, config_needs_update};
@@ -48,6 +48,98 @@ fn format_date(iso: &str) -> String {
     }
     iso.to_string()
 }
+
+async fn show_buy_menu(client: &CloudClient) {
+    // Get current plan to show appropriate options
+    let plan_info = client.get_plan().await.ok();
+    let current_plan = plan_info.as_ref().and_then(|p| p.plan.as_deref());
+    let is_canceling = plan_info.as_ref().map(|p| p.cancel_at_period_end).unwrap_or(false);
+
+    // Build options based on current plan
+    let mut options: Vec<String> = Vec::new();
+    let mut actions: Vec<&str> = Vec::new();
+
+    // Subscribers can buy token packs
+    if current_plan.is_some() {
+        options.push("Buy token pack ($2.99 - 125k tokens)".to_string());
+        actions.push("tokens");
+    }
+
+    // Show all plan options with current plan marked
+    let plans = [
+        ("lite", "Lite", "$2.99/mo", "250k tokens"),
+        ("pro", "Pro", "$9.99/mo", "1M tokens"),
+        ("power", "Power", "$19.99/mo", "3M tokens"),
+    ];
+
+    for (id, name, price, tokens) in plans {
+        let is_current = current_plan == Some(id);
+        let label = if is_current && is_canceling {
+            format!("{} ({} - {}) (current, canceling)", name, price, tokens)
+        } else if is_current {
+            format!("{} ({} - {}) (current)", name, price, tokens)
+        } else {
+            format!("{} ({} - {})", name, price, tokens)
+        };
+        options.push(label);
+        actions.push(id);
+    }
+
+    options.push("Back".to_string());
+    actions.push("cancel");
+
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Select a plan")
+        .items(&options)
+        .default(0)
+        .interact_opt();
+
+    let selection = match selection {
+        Ok(Some(s)) => s,
+        _ => return,
+    };
+
+    let action = actions.get(selection).copied().unwrap_or("cancel");
+
+    // Handle selecting current plan
+    if Some(action) == current_plan {
+        if is_canceling {
+            // Resubscribe to current plan (reactivate)
+            match client.reactivate_subscription().await {
+                Ok(_) => {
+                    println!("\nSubscription reactivated!");
+                    return;
+                }
+                Err(e) => {
+                    eprintln!("Error: {}", e);
+                    return;
+                }
+            }
+        } else {
+            println!("\nYou're already on this plan.");
+            return;
+        }
+    }
+
+    let url = match action {
+        "tokens" => client.buy_tokens().await,
+        "lite" => client.subscribe("lite").await,
+        "pro" => client.subscribe("pro").await,
+        "power" => client.subscribe("power").await,
+        _ => return,
+    };
+
+    match url {
+        Ok(url) => {
+            println!("Opening checkout in browser...");
+            if let Err(e) = open::that(&url) {
+                println!("Could not open browser: {}", e);
+                println!("Open this URL manually: {}", url);
+            }
+        }
+        Err(e) => eprintln!("Error: {}", e),
+    }
+}
 use anyhow::Result;
 use auth::Credentials;
 use config::Config;
@@ -64,17 +156,22 @@ async fn main() -> Result<()> {
     // Handle --help
     if args.iter().any(|a| a == "--help" || a == "-h") {
         println!("nosh v{}", env!("CARGO_PKG_VERSION"));
-        println!("Natural language shell powered by AI\n");
+        println!("A modern shell for developers\n");
         println!("Usage: nosh [COMMAND] [OPTIONS]\n");
         println!("Commands:");
         println!("  convert-zsh FILE   Convert zsh completion file to nosh TOML format");
         println!("\nOptions:");
-        println!("  --setup            Run setup wizard to configure AI backend");
+        println!("  --setup            Run setup wizard to sign in");
         println!("  --help             Show this help message");
         println!("\nIn the shell:");
         println!("  command    Run command directly");
         println!("  ?query     Translate natural language to command via AI");
+        println!("  ??query    Agentic mode - AI investigates before answering");
         println!("  exit       Quit nosh");
+        println!("\nLegal:");
+        println!("  Terms of Use:    https://nosh.sh/docs/terms");
+        println!("  Privacy Policy:  https://nosh.sh/docs/privacy");
+        println!("\nBy using nosh, you agree to the Terms of Use.");
         return Ok(());
     }
 
@@ -113,25 +210,17 @@ async fn main() -> Result<()> {
         let _ = install_builtins();
 
         match run_onboarding().await? {
-            OnboardingChoice::Quit => return Ok(()),
-            OnboardingChoice::Ollama => {}
             OnboardingChoice::Cloud => {
                 creds = Credentials::load().unwrap_or_default();
+            }
+            OnboardingChoice::Skip => {
+                // User skipped AI setup - continue with shell only
             }
         }
     }
 
     // Load config (created by onboarding if first run)
-    let mut config = Config::load().unwrap_or_default();
-
-    // Check Ollama availability if using it
-    if config.ai.backend == "ollama" {
-        let ollama = OllamaClient::new(&config.ai.model, &config.ai.ollama_url);
-        if !ollama.check_available().await {
-            eprintln!("Warning: Ollama not available at {}", config.ai.ollama_url);
-            eprintln!("Start Ollama or run `nosh --setup` to reconfigure.\n");
-        }
-    }
+    let config = Config::load().unwrap_or_default();
 
     println!("Type /help for commands. Prefix with ? for AI.\n");
 
@@ -154,11 +243,12 @@ async fn main() -> Result<()> {
             Some(line) if line == "exit" || line == "quit" => break,
             Some(line) if line == "/setup" => {
                 match run_onboarding().await {
-                    Ok(OnboardingChoice::Quit) => {}
-                    Ok(OnboardingChoice::Ollama) | Ok(OnboardingChoice::Cloud) => {
+                    Ok(OnboardingChoice::Cloud) => {
                         creds = Credentials::load().unwrap_or_default();
-                        config = Config::load().unwrap_or_default();
                         println!("\nSettings updated!");
+                    }
+                    Ok(OnboardingChoice::Skip) => {
+                        // User cancelled setup
                     }
                     Err(e) => {
                         eprintln!("Setup error: {}", e);
@@ -168,7 +258,7 @@ async fn main() -> Result<()> {
             }
             Some(line) if line == "/help" => {
                 println!("\nBuilt-in commands:");
-                println!("  /setup              Run setup wizard to switch AI backend");
+                println!("  /setup              Run setup wizard to sign in");
                 println!("  /usage              Show usage, balance, and manage subscription");
                 println!("  /buy                Buy tokens or subscribe to a plan");
                 println!("  /nosh               Manage nosh config files");
@@ -179,7 +269,10 @@ async fn main() -> Result<()> {
                 println!("\nUsage:");
                 println!("  command   Run command directly");
                 println!("  ?query    Translate natural language via AI");
-                println!("  ??query   Agentic mode - AI investigates before answering\n");
+                println!("  ??query   Agentic mode - AI investigates before answering");
+                println!("\nLegal:");
+                println!("  Terms of Use:    https://nosh.sh/docs/terms");
+                println!("  Privacy Policy:  https://nosh.sh/docs/privacy\n");
                 continue;
             }
             Some(line) if line == "/clear" => {
@@ -204,15 +297,7 @@ async fn main() -> Result<()> {
                 eprintln!("Usage: /convert-zsh /path/to/zsh/completion");
                 continue;
             }
-            Some(line) if line == "/usage" || line == "/tokens" || line == "/plan" => {
-                if config.ai.backend != "cloud" {
-                    println!("\nBackend: Ollama (local)");
-                    println!("Model: {}", config.ai.model);
-                    println!("URL: {}", config.ai.ollama_url);
-                    println!("\nLocal mode has unlimited usage.\n");
-                    continue;
-                }
-
+            Some(line) if line == "/usage" => {
                 let token = match &creds.token {
                     Some(t) => t,
                     None => {
@@ -236,8 +321,9 @@ async fn main() -> Result<()> {
                         if let Some(ref plan) = plan_info {
                             if let Some(plan_name) = &plan.plan {
                                 let display_name = match plan_name.as_str() {
-                                    "starter" => "Starter ($2.99/mo)",
-                                    "pro" => "Pro ($4.99/mo)",
+                                    "lite" => "Lite ($2.99/mo)",
+                                    "pro" => "Pro ($9.99/mo)",
+                                    "power" => "Power ($19.99/mo)",
                                     _ => plan_name,
                                 };
                                 print!("│  Plan:         {}", display_name);
@@ -267,18 +353,25 @@ async fn main() -> Result<()> {
                         println!("│");
                         println!("└────────────────────────────────────┘\n");
 
-                        // Show options if user has a subscription
-                        let has_active_subscription = plan_info
-                            .as_ref()
-                            .map(|p| p.plan.is_some() && !p.cancel_at_period_end)
-                            .unwrap_or(false);
+                        // Show options based on subscription state
+                        let has_subscription = plan_info.as_ref().map(|p| p.plan.is_some()).unwrap_or(false);
+                        let is_canceling = plan_info.as_ref().map(|p| p.cancel_at_period_end).unwrap_or(false);
 
-                        if has_active_subscription {
-                            let options = vec![
-                                "Done",
-                                "Manage billing (invoices, payment method)",
-                                "Cancel subscription",
-                            ];
+                        if has_subscription {
+                            let options = if is_canceling {
+                                vec![
+                                    "Done",
+                                    "Manage billing (invoices, payment method)",
+                                    "Reactivate subscription",
+                                ]
+                            } else {
+                                vec![
+                                    "Done",
+                                    "Manage billing (invoices, payment method)",
+                                    "Upgrade plan (via /buy)",
+                                    "Cancel subscription",
+                                ]
+                            };
 
                             let selection = Select::with_theme(&ColorfulTheme::default())
                                 .items(&options)
@@ -287,6 +380,7 @@ async fn main() -> Result<()> {
 
                             match selection {
                                 Ok(Some(1)) => {
+                                    // Manage billing - open Stripe portal
                                     match client.get_portal_url().await {
                                         Ok(url) => {
                                             println!("Opening Stripe billing portal...");
@@ -298,7 +392,19 @@ async fn main() -> Result<()> {
                                         Err(e) => eprintln!("Error: {}", e),
                                     }
                                 }
+                                Ok(Some(2)) if is_canceling => {
+                                    // Reactivate subscription
+                                    match client.reactivate_subscription().await {
+                                        Ok(_) => println!("\nSubscription reactivated!"),
+                                        Err(e) => eprintln!("Error: {}", e),
+                                    }
+                                }
                                 Ok(Some(2)) => {
+                                    // Upgrade plan - show buy menu
+                                    show_buy_menu(&client).await;
+                                }
+                                Ok(Some(3)) if !is_canceling => {
+                                    // Cancel subscription
                                     println!("\nAre you sure you want to cancel?");
                                     println!("You'll keep access until the end of your billing period.\n");
 
@@ -325,12 +431,6 @@ async fn main() -> Result<()> {
                 continue;
             }
             Some(line) if line == "/buy" => {
-                if config.ai.backend != "cloud" {
-                    println!("Token purchases are only available for cloud backend.");
-                    println!("Run /setup to switch to Nosh Cloud.");
-                    continue;
-                }
-
                 let token = match &creds.token {
                     Some(t) => t,
                     None => {
@@ -340,62 +440,7 @@ async fn main() -> Result<()> {
                 };
 
                 let client = CloudClient::new(token);
-
-                // Get current plan to show appropriate options
-                let plan_info = client.get_plan().await.ok();
-                let has_subscription = plan_info.as_ref().map(|p| p.plan.is_some()).unwrap_or(false);
-
-                let options = if has_subscription {
-                    vec![
-                        "Buy token pack ($2.99 - 50k tokens, never expire)",
-                        "Upgrade to Pro ($4.99/mo - 250k tokens)",
-                        "Cancel",
-                    ]
-                } else {
-                    vec![
-                        "Buy token pack ($2.99 - 50k tokens, never expire)",
-                        "Subscribe to Starter ($2.99/mo - 100k tokens)",
-                        "Subscribe to Pro ($4.99/mo - 250k tokens)",
-                        "Cancel",
-                    ]
-                };
-
-                let selection = Select::with_theme(&ColorfulTheme::default())
-                    .with_prompt("What would you like to purchase?")
-                    .items(&options)
-                    .default(0)
-                    .interact_opt();
-
-                let selection = match selection {
-                    Ok(Some(s)) => s,
-                    _ => continue,
-                };
-
-                let url = if has_subscription {
-                    match selection {
-                        0 => client.buy_tokens().await,
-                        1 => client.subscribe("pro").await,
-                        _ => continue,
-                    }
-                } else {
-                    match selection {
-                        0 => client.buy_tokens().await,
-                        1 => client.subscribe("starter").await,
-                        2 => client.subscribe("pro").await,
-                        _ => continue,
-                    }
-                };
-
-                match url {
-                    Ok(url) => {
-                        println!("Opening checkout in browser...");
-                        if let Err(e) = open::that(&url) {
-                            println!("Could not open browser: {}", e);
-                            println!("Open this URL manually: {}", url);
-                        }
-                    }
-                    Err(e) => eprintln!("Error: {}", e),
-                }
+                show_buy_menu(&client).await;
                 continue;
             }
             Some(line) if line == "/nosh" => {
@@ -555,13 +600,6 @@ async fn main() -> Result<()> {
                 // Agentic mode - AI investigates before answering
                 let input = line[2..].trim();
                 if input.is_empty() {
-                    continue;
-                }
-
-                // Agentic mode requires cloud backend
-                if config.ai.backend != "cloud" {
-                    eprintln!("Agentic mode requires cloud backend.");
-                    eprintln!("Run /setup to switch to Nosh Cloud, or use ? for simple translation.");
                     continue;
                 }
 
@@ -770,16 +808,11 @@ async fn main() -> Result<()> {
                 spinner.enable_steady_tick(std::time::Duration::from_millis(80));
 
                 // AI translation with conversation context
-                let result = if config.ai.backend == "cloud" {
-                    if let Some(token) = &creds.token {
-                        let client = CloudClient::new(token);
-                        client.translate(input, &cwd, Some(&ai_context)).await.map(|(cmd, _)| cmd)
-                    } else {
-                        Err(anyhow::anyhow!("Not authenticated"))
-                    }
+                let result = if let Some(token) = &creds.token {
+                    let client = CloudClient::new(token);
+                    client.translate(input, &cwd, Some(&ai_context)).await.map(|(cmd, _)| cmd)
                 } else {
-                    let client = OllamaClient::new(&config.ai.model, &config.ai.ollama_url);
-                    client.translate(input, &cwd, Some(&ai_context)).await
+                    Err(anyhow::anyhow!("Not authenticated. Run /setup to sign in."))
                 };
 
                 spinner.finish_and_clear();

@@ -24,10 +24,12 @@ This document defines nosh's pricing structure, token mechanics, licensing, and 
 
 ### Dual-Model Architecture
 
-| Mode | Model | Cost/M Input | Cost/M Output |
-|------|-------|--------------|---------------|
-| Simple (`?`) | Small | $0.10 | $0.30 |
-| Agentic (`??`) | Large | $0.40 | $2.00 |
+| Mode | Model | Env Variable | Cost/M Input | Cost/M Output |
+|------|-------|--------------|--------------|---------------|
+| Simple (`?`) | Small | `MISTRAL_MODEL_SMALL` | $0.10 | $0.30 |
+| Agentic (`??`) | Large | `MISTRAL_MODEL_LARGE` | $0.40 | $2.00 |
+
+Each endpoint uses a different model to optimize cost vs capability. Falls back to `MISTRAL_MODEL` if specific vars not set.
 
 ### Pool Token Conversion
 

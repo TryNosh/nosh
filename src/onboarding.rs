@@ -10,9 +10,8 @@ use crate::auth::Credentials;
 use crate::config::Config;
 
 pub enum OnboardingChoice {
-    Ollama,
     Cloud,
-    Quit,
+    Skip, // Use nosh without AI features
 }
 
 #[derive(Serialize)]
@@ -51,56 +50,41 @@ pub async fn run_onboarding() -> Result<OnboardingChoice> {
     writeln!(stdout, "\nWelcome to nosh!")?;
     stdout.execute(ResetColor)?;
     writeln!(stdout)?;
+    writeln!(stdout, "By using nosh, you agree to the Terms of Use and Privacy Policy.")?;
+    stdout.execute(SetForegroundColor(Color::DarkGrey))?;
+    writeln!(stdout, "https://nosh.sh/docs/terms  •  https://nosh.sh/docs/privacy")?;
+    stdout.execute(ResetColor)?;
+    writeln!(stdout)?;
 
-    let options = &[
-        "Ollama (free, runs locally)",
-        "Nosh Cloud (subscription)",
-        "Quit",
+    let choices = &[
+        "Set up AI features (free tier available)",
+        "Skip for now (use as regular shell)",
     ];
 
     let selection = Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("How would you like to power your shell?")
-        .items(options)
+        .with_prompt("What would you like to do?")
+        .items(choices)
         .default(0)
         .interact()?;
 
     match selection {
         0 => {
-            setup_ollama().await?;
-            Ok(OnboardingChoice::Ollama)
-        }
-        1 => {
             setup_cloud().await?;
             Ok(OnboardingChoice::Cloud)
         }
-        _ => Ok(OnboardingChoice::Quit),
+        _ => {
+            writeln!(stdout)?;
+            writeln!(stdout, "You can set up AI features later with /setup")?;
+            writeln!(stdout)?;
+
+            // Mark onboarding as complete so we don't ask again
+            let mut config = Config::load().unwrap_or_default();
+            config.onboarding_complete = true;
+            config.save()?;
+
+            Ok(OnboardingChoice::Skip)
+        }
     }
-}
-
-async fn setup_ollama() -> Result<()> {
-    let mut stdout = io::stdout();
-
-    writeln!(stdout)?;
-    writeln!(stdout, "Setting up Ollama...")?;
-    writeln!(stdout)?;
-
-    let model: String = Input::with_theme(&ColorfulTheme::default())
-        .with_prompt("Which model would you like to use?")
-        .default("llama3.2".to_string())
-        .interact_text()?;
-
-    let mut config = Config::load().unwrap_or_default();
-    config.ai.backend = "ollama".to_string();
-    config.ai.model = model.clone();
-    config.save()?;
-
-    writeln!(stdout)?;
-    stdout.execute(SetForegroundColor(Color::Green))?;
-    writeln!(stdout, "Ollama configured with model: {}", model)?;
-    stdout.execute(ResetColor)?;
-    writeln!(stdout)?;
-
-    Ok(())
 }
 
 fn get_cloud_url() -> String {
@@ -232,24 +216,21 @@ fn save_cloud_credentials(email: &str, token: &str) -> Result<()> {
     creds.email = Some(email.to_string());
     creds.save()?;
 
+    // Mark onboarding as complete
     let mut config = Config::load().unwrap_or_default();
-    config.ai.backend = "cloud".to_string();
+    config.onboarding_complete = true;
     config.save()?;
 
     Ok(())
 }
 
 pub fn needs_onboarding(creds: &Credentials) -> bool {
-    // Run onboarding if config doesn't exist (first run)
-    if !Config::exists() {
-        return true;
+    // Skip if already authenticated
+    if creds.is_authenticated() {
+        return false;
     }
 
-    // Otherwise check backend-specific requirements
+    // Skip if user previously completed/skipped onboarding
     let config = Config::load().unwrap_or_default();
-    match config.ai.backend.as_str() {
-        "cloud" => !creds.is_authenticated(),
-        "ollama" => false, // Ollama config exists, just warn if not available
-        _ => true, // Unknown backend, run onboarding
-    }
+    !config.onboarding_complete
 }
