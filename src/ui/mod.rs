@@ -1,6 +1,7 @@
 //! Terminal UI components for nosh.
 
 mod output_box;
+pub mod spinner;
 pub mod theme;
 
 pub use output_box::OutputBox;

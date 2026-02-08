@@ -653,14 +653,7 @@ async fn main() -> Result<()> {
 
                     // Get next step from AI
                     println!(); // Separate from previous step
-                    let ai_spinner = ProgressBar::new_spinner();
-                    ai_spinner.set_style(
-                        ProgressStyle::default_spinner()
-                            .template("{spinner:.cyan} {msg}")
-                            .unwrap(),
-                    );
-                    ai_spinner.set_message("Thinking...");
-                    ai_spinner.enable_steady_tick(std::time::Duration::from_millis(100));
+                    let ai_spinner = ui::spinner::create();
 
                     let step = match client
                         .agentic_step(input, &cwd, Some(&ai_context), &executions)
@@ -812,15 +805,7 @@ async fn main() -> Result<()> {
                 }
 
                 // Show spinner while waiting for AI
-                let spinner = ProgressBar::new_spinner();
-                spinner.set_style(
-                    ProgressStyle::default_spinner()
-                        .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
-                        .template("{spinner:.cyan} {msg}")
-                        .unwrap()
-                );
-                spinner.set_message("Thinking...");
-                spinner.enable_steady_tick(std::time::Duration::from_millis(80));
+                let spinner = ui::spinner::create();
 
                 // AI translation with conversation context
                 let result = if let Some(token) = &creds.token {
