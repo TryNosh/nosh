@@ -5,6 +5,33 @@ use serde::{Deserialize, Serialize};
 use super::agentic::AgenticStep;
 use super::context::ConversationContext;
 
+/// Get detailed OS info (distro for Linux, variant for BSD).
+fn get_os_info() -> String {
+    let os = std::env::consts::OS;
+
+    match os {
+        "linux" => {
+            // Try to read /etc/os-release for distro info
+            if let Ok(content) = std::fs::read_to_string("/etc/os-release") {
+                // Look for ID= line (e.g., ID=ubuntu, ID=arch, ID=fedora)
+                for line in content.lines() {
+                    if let Some(id) = line.strip_prefix("ID=") {
+                        let distro = id.trim_matches('"').to_lowercase();
+                        return format!("linux/{}", distro);
+                    }
+                }
+            }
+            "linux".to_string()
+        }
+        "macos" => "macos".to_string(),
+        "freebsd" => "freebsd".to_string(),
+        "dragonfly" => "dragonflybsd".to_string(),
+        "openbsd" => "openbsd".to_string(),
+        "netbsd" => "netbsd".to_string(),
+        other => other.to_string(),
+    }
+}
+
 #[derive(Deserialize)]
 pub struct Usage {
     pub subscription_balance: i32,
@@ -39,6 +66,8 @@ struct ContextExchange {
 struct CompleteRequest {
     input: String,
     cwd: String,
+    os: String,
+    arch: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     context: Option<Vec<ContextExchange>>,
 }
@@ -71,6 +100,8 @@ struct AgenticExecution {
 struct AgenticRequest {
     input: String,
     cwd: String,
+    os: String,
+    arch: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     context: Option<Vec<ContextExchange>>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -128,6 +159,8 @@ impl CloudClient {
         let request = CompleteRequest {
             input: input.to_string(),
             cwd: cwd.to_string(),
+            os: get_os_info(),
+            arch: std::env::consts::ARCH.to_string(),
             context: context_exchanges,
         };
 
@@ -336,6 +369,8 @@ impl CloudClient {
         let request = AgenticRequest {
             input: input.to_string(),
             cwd: cwd.to_string(),
+            os: get_os_info(),
+            arch: std::env::consts::ARCH.to_string(),
             context: context_exchanges,
             executions: exec_list,
         };
