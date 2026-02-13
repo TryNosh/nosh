@@ -5,6 +5,7 @@ mod config;
 mod exec;
 mod history;
 mod onboarding;
+mod packages;
 mod paths;
 mod plugins;
 mod repl;
@@ -16,8 +17,8 @@ use ai::{
     ConversationContext,
 };
 use ui::{format_step, format_output, format_translated_command, format_header, format_result, format_error};
-use plugins::builtins::{install_builtins, ConfigFile, update_config, config_needs_update};
-use dialoguer::{theme::ColorfulTheme, Select, MultiSelect};
+use plugins::builtins::{install_builtins, upgrade_builtins};
+use dialoguer::{theme::ColorfulTheme, Input, Select};
 
 fn format_tokens(tokens: i32) -> String {
     if tokens >= 1_000_000 {
@@ -223,7 +224,7 @@ async fn main() -> Result<()> {
     }
 
     // Load config (created by onboarding if first run)
-    let config = Config::load().unwrap_or_default();
+    let mut config = Config::load().unwrap_or_default();
 
     // Show welcome message if configured
     if !config.welcome_message.is_empty() {
@@ -248,7 +249,7 @@ async fn main() -> Result<()> {
         // Update terminal title to show current directory
         exec::terminal::set_title_to_cwd();
 
-        match repl.readline()? {
+        match repl.readline().await? {
             ReadlineResult::Eof => break,
             ReadlineResult::Interrupted => {
                 // Ctrl+C at prompt - just show a new prompt
@@ -276,9 +277,15 @@ async fn main() -> Result<()> {
                 println!("  /setup              Run setup wizard to sign in");
                 println!("  /usage              Show usage, balance, and manage subscription");
                 println!("  /buy                Buy tokens or subscribe to a plan");
-                println!("  /nosh               Manage nosh config files");
+                println!("  /config             Open or edit config files");
+                println!("  /create             Create or link a nosh package");
+                println!("  /install USER/REPO  Install theme/plugin package from GitHub");
+                println!("  /upgrade            Update all installed packages");
+                println!("  /packages           List and manage installed packages");
                 println!("  /convert-zsh FILE   Convert zsh completion to nosh TOML");
                 println!("  /clear              Clear AI conversation context");
+                println!("  /reload             Reload config and theme");
+                println!("  /debug [plugin]     Debug plugins and theme");
                 println!("  /help               Show this help");
                 println!("  exit                Quit nosh");
                 println!("\nUsage:");
@@ -293,6 +300,77 @@ async fn main() -> Result<()> {
             ReadlineResult::Line(line) if line == "/clear" => {
                 ai_context.clear();
                 println!("AI context cleared.");
+                continue;
+            }
+            ReadlineResult::Line(line) if line == "/reload" => {
+                match Config::load() {
+                    Ok(new_config) => {
+                        config = new_config;
+                        ai_context = ConversationContext::new(config.ai.context_size);
+                        repl.reload(&config.prompt.theme);
+                        println!("Config reloaded.");
+                    }
+                    Err(e) => eprintln!("Error reloading config: {}", e),
+                }
+                continue;
+            }
+            ReadlineResult::Line(line) if line == "/debug" => {
+                // Show loaded plugins and theme info
+                println!("\nTheme: {}", config.prompt.theme);
+
+                let theme_vars = repl.theme_variables();
+                if !theme_vars.is_empty() {
+                    println!("Variables used in theme:");
+                    for var in &theme_vars {
+                        println!("  {}", var);
+                    }
+                }
+
+                println!("\nLoaded plugins:");
+                let plugins = repl.list_plugins();
+                if plugins.is_empty() {
+                    println!("  (none)");
+                } else {
+                    for (name, desc, vars) in plugins {
+                        println!("  {} - {}", name, if desc.is_empty() { "(no description)" } else { desc });
+                        for var in vars {
+                            println!("    :{}", var);
+                        }
+                    }
+                }
+
+                println!("\nUse '/debug <plugin>' to test a specific plugin.");
+                continue;
+            }
+            ReadlineResult::Line(line) if line.starts_with("/debug ") => {
+                let plugin_name = line.strip_prefix("/debug ").unwrap().trim();
+                if plugin_name.is_empty() {
+                    eprintln!("Usage: /debug <plugin_name>");
+                    continue;
+                }
+
+                println!("\nDebugging plugin: {}\n", plugin_name);
+
+                match repl.debug_plugin(plugin_name).await {
+                    Some(results) => {
+                        for (var_name, provider_desc, result) in results {
+                            println!("  {}:", var_name);
+                            println!("    {}", provider_desc);
+                            match result {
+                                Ok(value) => println!("    \x1b[32m→ {}\x1b[0m", value),
+                                Err(err) => println!("    \x1b[31m✗ {}\x1b[0m", err),
+                            }
+                            println!();
+                        }
+                    }
+                    None => {
+                        eprintln!("Plugin '{}' not found.", plugin_name);
+                        println!("\nAvailable plugins:");
+                        for (name, _, _) in repl.list_plugins() {
+                            println!("  {}", name);
+                        }
+                    }
+                }
                 continue;
             }
             ReadlineResult::Line(line) if line.starts_with("/convert-zsh ") => {
@@ -310,6 +388,352 @@ async fn main() -> Result<()> {
             }
             ReadlineResult::Line(line) if line == "/convert-zsh" => {
                 eprintln!("Usage: /convert-zsh /path/to/zsh/completion");
+                continue;
+            }
+            ReadlineResult::Line(line) if line == "/create" => {
+                let cwd = std::env::current_dir().unwrap_or_default();
+                let is_nosh_package = cwd.join("themes").exists()
+                    || cwd.join("plugins").exists()
+                    || cwd.join("completions").exists();
+
+                let options = if is_nosh_package {
+                    vec!["New theme", "New plugin", "New completion", "Link to nosh", "Cancel"]
+                } else {
+                    vec!["New project", "Link to nosh", "Cancel"]
+                };
+
+                let selection = Select::with_theme(&ColorfulTheme::default())
+                    .with_prompt("What would you like to create?")
+                    .items(&options)
+                    .default(0)
+                    .interact_opt();
+
+                match selection {
+                    Ok(Some(idx)) if options[idx] == "New project" => {
+                        // Create new nosh package project
+                        let location_opts = vec!["Current directory", "New directory"];
+                        let loc = Select::with_theme(&ColorfulTheme::default())
+                            .with_prompt("Where?")
+                            .items(&location_opts)
+                            .default(0)
+                            .interact_opt();
+
+                        let project_dir = match loc {
+                            Ok(Some(0)) => {
+                                // Current directory
+                                cwd.clone()
+                            }
+                            Ok(Some(1)) => {
+                                // New directory
+                                let name: Result<String, _> = Input::with_theme(&ColorfulTheme::default())
+                                    .with_prompt("Project name")
+                                    .validate_with(|input: &String| {
+                                        if input.trim().is_empty() {
+                                            Err("Name cannot be empty")
+                                        } else if input.contains('/') || input.contains('\\') {
+                                            Err("Name cannot contain path separators")
+                                        } else {
+                                            Ok(())
+                                        }
+                                    })
+                                    .interact_text();
+
+                                match name {
+                                    Ok(n) => cwd.join(n.trim()),
+                                    Err(_) => continue,
+                                }
+                            }
+                            _ => continue,
+                        };
+
+                        // Create package structure
+                        if let Err(e) = std::fs::create_dir_all(project_dir.join("themes")) {
+                            eprintln!("Could not create themes directory: {}", e);
+                            continue;
+                        }
+                        if let Err(e) = std::fs::create_dir_all(project_dir.join("plugins")) {
+                            eprintln!("Could not create plugins directory: {}", e);
+                            continue;
+                        }
+                        if let Err(e) = std::fs::create_dir_all(project_dir.join("completions")) {
+                            eprintln!("Could not create completions directory: {}", e);
+                            continue;
+                        }
+
+                        // Create README
+                        let readme = r#"# Nosh Package
+
+A nosh package containing themes, plugins, and/or completions.
+
+## Structure
+
+```
+themes/       # Theme files (.toml)
+plugins/      # Plugin files (.toml)
+completions/  # Completion files (.toml)
+```
+
+## Usage
+
+Link this package to nosh:
+```
+cd /path/to/this/package
+nosh
+/create > Link to nosh
+```
+
+Or install from GitHub:
+```
+/install username/repo-name
+```
+
+## Documentation
+
+- Themes: https://nosh.sh/docs/themes
+- Plugins: https://nosh.sh/docs/plugins
+- Completions: https://nosh.sh/docs/completions
+"#;
+                        let _ = std::fs::write(project_dir.join("README.md"), readme);
+
+                        println!("\nCreated nosh package at: {}", project_dir.display());
+                        println!("\nNext steps:");
+                        println!("  1. cd {}", project_dir.display());
+                        println!("  2. Run /create to add themes, plugins, or completions");
+                        println!("  3. Run /create > Link to nosh to make it available");
+                    }
+                    Ok(Some(idx)) if options[idx] == "New theme" => {
+                        let name: Result<String, _> = Input::with_theme(&ColorfulTheme::default())
+                            .with_prompt("Theme name")
+                            .validate_with(|input: &String| {
+                                if input.trim().is_empty() {
+                                    Err("Name cannot be empty")
+                                } else {
+                                    Ok(())
+                                }
+                            })
+                            .interact_text();
+
+                        if let Ok(name) = name {
+                            let name = name.trim();
+                            let theme_path = cwd.join("themes").join(format!("{}.toml", name));
+
+                            if theme_path.exists() {
+                                eprintln!("Theme '{}' already exists", name);
+                                continue;
+                            }
+
+                            let template = format!(r##"# Theme: {}
+# Documentation: https://nosh.sh/docs/themes
+
+[prompt]
+format = """
+[{{dir}}](blue bold) [{{builtins/context:git_branch}}](purple){{builtins/context:git_status}}
+[{{prompt:char}}](green bold) """
+char = "❯"
+char_error = "❯"
+
+[plugins]
+"builtins/context" = {{ enabled = true }}
+"builtins/exec_time" = {{ enabled = true, min_ms = 1000 }}
+
+[colors]
+path = "#5f87af"
+git_clean = "#87af87"
+git_dirty = "#d7af5f"
+error = "#d75f5f"
+"##, name);
+
+                            match std::fs::write(&theme_path, &template) {
+                                Ok(_) => {
+                                    println!("\nCreated: {}", theme_path.display());
+                                }
+                                Err(e) => eprintln!("Could not create theme: {}", e),
+                            }
+                        }
+                    }
+                    Ok(Some(idx)) if options[idx] == "New plugin" => {
+                        let name: Result<String, _> = Input::with_theme(&ColorfulTheme::default())
+                            .with_prompt("Plugin name")
+                            .validate_with(|input: &String| {
+                                if input.trim().is_empty() {
+                                    Err("Name cannot be empty")
+                                } else {
+                                    Ok(())
+                                }
+                            })
+                            .interact_text();
+
+                        if let Ok(name) = name {
+                            let name = name.trim();
+                            let plugin_path = cwd.join("plugins").join(format!("{}.toml", name));
+
+                            if plugin_path.exists() {
+                                eprintln!("Plugin '{}' already exists", name);
+                                continue;
+                            }
+
+                            let template = format!(r#"# Plugin: {}
+# Documentation: https://nosh.sh/docs/plugins
+
+[plugin]
+name = "{}"
+description = "My custom plugin"
+
+[provides]
+# Command-based variable
+# example = {{ command = "echo hello" }}
+
+# With transform (non_empty returns icon if output exists)
+# status = {{ command = "some-check", transform = "non_empty" }}
+
+[icons]
+# Icons used by non_empty transform
+# dirty = "*"
+# clean = ""
+
+[config]
+# Custom config values
+# min_ms = 500
+"#, name, name);
+
+                            match std::fs::write(&plugin_path, &template) {
+                                Ok(_) => {
+                                    println!("\nCreated: {}", plugin_path.display());
+                                }
+                                Err(e) => eprintln!("Could not create plugin: {}", e),
+                            }
+                        }
+                    }
+                    Ok(Some(idx)) if options[idx] == "New completion" => {
+                        let name: Result<String, _> = Input::with_theme(&ColorfulTheme::default())
+                            .with_prompt("Command name (e.g., mycli)")
+                            .validate_with(|input: &String| {
+                                if input.trim().is_empty() {
+                                    Err("Name cannot be empty")
+                                } else {
+                                    Ok(())
+                                }
+                            })
+                            .interact_text();
+
+                        if let Ok(name) = name {
+                            let name = name.trim();
+                            let completion_path = cwd.join("completions").join(format!("{}.toml", name));
+
+                            if completion_path.exists() {
+                                eprintln!("Completion '{}' already exists", name);
+                                continue;
+                            }
+
+                            let template = format!(r#"# Completions for: {}
+# Documentation: https://nosh.sh/docs/completions
+
+[completions.{}]
+description = "Description of {}"
+
+# Subcommands
+[completions.{}.subcommands.example]
+description = "An example subcommand"
+
+# Options
+[[completions.{}.options]]
+name = "--help"
+description = "Show help"
+
+[[completions.{}.options]]
+name = "--version"
+description = "Show version"
+"#, name, name, name, name, name, name);
+
+                            match std::fs::write(&completion_path, &template) {
+                                Ok(_) => {
+                                    println!("\nCreated: {}", completion_path.display());
+                                }
+                                Err(e) => eprintln!("Could not create completion: {}", e),
+                            }
+                        }
+                    }
+                    Ok(Some(idx)) if options[idx] == "Link to nosh" => {
+                        // Get package name from directory name
+                        let pkg_name = cwd.file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("package");
+
+                        let link_path = paths::packages_dir().join(pkg_name);
+
+                        if link_path.exists() {
+                            eprintln!("Package '{}' already exists in nosh config.", pkg_name);
+                            eprintln!("Remove it first: rm -rf {}", link_path.display());
+                            continue;
+                        }
+
+                        // Create packages directory if needed
+                        if let Err(e) = std::fs::create_dir_all(paths::packages_dir()) {
+                            eprintln!("Could not create packages directory: {}", e);
+                            continue;
+                        }
+
+                        // Create symlink
+                        #[cfg(unix)]
+                        let result = std::os::unix::fs::symlink(&cwd, &link_path);
+                        #[cfg(windows)]
+                        let result = std::os::windows::fs::symlink_dir(&cwd, &link_path);
+
+                        match result {
+                            Ok(_) => {
+                                println!("\nLinked: {} -> {}", link_path.display(), cwd.display());
+                                println!("\nYour package is now available as '{}'", pkg_name);
+
+                                // Show what's available
+                                let themes_dir = cwd.join("themes");
+                                let plugins_dir = cwd.join("plugins");
+
+                                if themes_dir.exists() {
+                                    if let Ok(entries) = std::fs::read_dir(&themes_dir) {
+                                        let themes: Vec<_> = entries
+                                            .filter_map(|e| e.ok())
+                                            .filter(|e| e.path().extension().map_or(false, |ext| ext == "toml"))
+                                            .collect();
+                                        if !themes.is_empty() {
+                                            println!("\nThemes:");
+                                            for entry in themes {
+                                                let path = entry.path();
+                                                let name = path.file_stem()
+                                                    .and_then(|n| n.to_str())
+                                                    .unwrap_or("?");
+                                                println!("  theme = \"{}/{}\"", pkg_name, name);
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if plugins_dir.exists() {
+                                    if let Ok(entries) = std::fs::read_dir(&plugins_dir) {
+                                        let plugins: Vec<_> = entries
+                                            .filter_map(|e| e.ok())
+                                            .filter(|e| e.path().extension().map_or(false, |ext| ext == "toml"))
+                                            .collect();
+                                        if !plugins.is_empty() {
+                                            println!("\nPlugins:");
+                                            for entry in plugins {
+                                                let path = entry.path();
+                                                let name = path.file_stem()
+                                                    .and_then(|n| n.to_str())
+                                                    .unwrap_or("?");
+                                                println!("  {{{}/{}:variable}}", pkg_name, name);
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Reload plugins
+                                repl.reload(&config.prompt.theme);
+                            }
+                            Err(e) => eprintln!("Could not create symlink: {}", e),
+                        }
+                    }
+                    _ => {}
+                }
                 continue;
             }
             ReadlineResult::Line(line) if line == "/usage" => {
@@ -458,17 +882,15 @@ async fn main() -> Result<()> {
                 show_buy_menu(&client).await;
                 continue;
             }
-            ReadlineResult::Line(line) if line == "/nosh" => {
+            ReadlineResult::Line(line) if line == "/config" => {
                 let options = vec![
                     "Open config directory",
                     "Edit config file",
-                    "Update config files to latest",
-                    "Install/update completions",
                     "Back",
                 ];
 
                 let selection = Select::with_theme(&ColorfulTheme::default())
-                    .with_prompt("Nosh Configuration")
+                    .with_prompt("Configuration")
                     .items(&options)
                     .default(0)
                     .interact_opt();
@@ -489,9 +911,10 @@ async fn main() -> Result<()> {
                     }
                     Ok(Some(1)) => {
                         // Edit specific config file
+                        let builtins_dir = paths::packages_dir().join("builtins");
                         let files = vec![
-                            ("Theme (default.toml)", paths::themes_dir().join("default.toml")),
                             ("Config (config.toml)", paths::config_file()),
+                            ("Theme (builtins/default.toml)", builtins_dir.join("themes").join("default.toml")),
                             ("Init script (init.sh)", paths::init_file()),
                             ("Permissions", paths::permissions_file()),
                         ];
@@ -516,92 +939,165 @@ async fn main() -> Result<()> {
                             }
                         }
                     }
-                    Ok(Some(2)) => {
-                        // Update config files
-                        let files_to_update: Vec<_> = ConfigFile::all()
-                            .iter()
-                            .filter(|f| config_needs_update(**f))
-                            .copied()
-                            .collect();
-
-                        if files_to_update.is_empty() {
-                            println!("\nAll config files are up to date!");
-                            continue;
-                        }
-
-                        let labels: Vec<String> = files_to_update
-                            .iter()
-                            .map(|f| format!("{} ({})", f.display_name(), f.path().display()))
-                            .collect();
-
-                        println!("\nThe following files differ from built-in defaults:\n");
-
-                        let selections = MultiSelect::with_theme(&ColorfulTheme::default())
-                            .with_prompt("Select files to update (Space to toggle, Enter to confirm)")
-                            .items(&labels)
-                            .defaults(&vec![true; labels.len()])
-                            .interact_opt();
-
-                        if let Ok(Some(indices)) = selections {
-                            if indices.is_empty() {
-                                println!("No files selected.");
-                            } else {
-                                for idx in &indices {
-                                    let file = files_to_update[*idx];
-                                    match update_config(file) {
-                                        Ok(_) => println!("  Updated: {}", file.display_name()),
-                                        Err(e) => eprintln!("  Error updating {}: {}", file.display_name(), e),
-                                    }
-                                }
-                                // Reload theme and plugins
-                                repl.reload("default");
-                                println!("\nConfig reloaded!");
-                            }
-                        }
-                    }
-                    Ok(Some(3)) => {
-                        // Install/update completions
-                        let completion_files = [
-                            ConfigFile::GitCompletion,
-                            ConfigFile::CargoCompletion,
-                            ConfigFile::NpmCompletion,
-                            ConfigFile::DockerCompletion,
-                        ];
-
-                        let labels: Vec<String> = completion_files
-                            .iter()
-                            .map(|f| {
-                                let status = if f.path().exists() {
-                                    if config_needs_update(*f) { "(update available)" } else { "(installed)" }
-                                } else {
-                                    "(not installed)"
-                                };
-                                format!("{} {}", f.display_name(), status)
-                            })
-                            .collect();
-
-                        let selections = MultiSelect::with_theme(&ColorfulTheme::default())
-                            .with_prompt("Select completions to install/update")
-                            .items(&labels)
-                            .defaults(&vec![true; labels.len()])
-                            .interact_opt();
-
-                        if let Ok(Some(indices)) = selections {
-                            if indices.is_empty() {
-                                println!("No completions selected.");
-                            } else {
-                                for idx in &indices {
-                                    let file = completion_files[*idx];
-                                    match update_config(file) {
-                                        Ok(_) => println!("  Installed: {}", file.display_name()),
-                                        Err(e) => eprintln!("  Error installing {}: {}", file.display_name(), e),
-                                    }
-                                }
-                                println!("\nCompletions installed to {}", paths::completions_dir().display());
-                            }
-                        }
-                    }
                     _ => {}
+                }
+                continue;
+            }
+            ReadlineResult::Line(line) if line.starts_with("/install ") => {
+                let source = line.strip_prefix("/install ").unwrap().trim();
+                if source.is_empty() {
+                    eprintln!("Usage: /install USER/REPO or /install https://...");
+                    continue;
+                }
+
+                println!("Installing package...");
+                match packages::install_package(source) {
+                    Ok(name) => {
+                        let (themes, plugins) = packages::get_package_contents(&name);
+                        println!("\nInstalled package: {}", name);
+
+                        if !themes.is_empty() {
+                            println!("\nThemes:");
+                            for theme in &themes {
+                                println!("  {}/{}", name, theme);
+                            }
+                            println!("\nTo use a theme, add to config.toml:");
+                            println!("  [prompt]");
+                            println!("  theme = \"{}/{}\"", name, themes[0]);
+                        }
+
+                        if !plugins.is_empty() {
+                            println!("\nPlugins:");
+                            for plugin in &plugins {
+                                println!("  {}/{}", name, plugin);
+                            }
+                            println!("\nTo use in your theme format:");
+                            println!("  [{{{}/{}:variable}}](color)", name, plugins[0]);
+                        }
+
+                        // Reload plugins
+                        repl.reload(&config.prompt.theme);
+                    }
+                    Err(e) => eprintln!("Error: {}", e),
+                }
+                continue;
+            }
+            ReadlineResult::Line(line) if line == "/install" => {
+                eprintln!("Usage: /install USER/REPO or /install https://...");
+                continue;
+            }
+            ReadlineResult::Line(line) if line == "/upgrade" => {
+                println!("Checking for updates...\n");
+                let mut total_updated = 0;
+
+                // Regenerate missing config.toml
+                let config_path = paths::config_file();
+                if !config_path.exists() {
+                    println!("Config:");
+                    if let Err(e) = config.save() {
+                        eprintln!("  Error creating config.toml: {}", e);
+                    } else {
+                        println!("  Created: config.toml");
+                        total_updated += 1;
+                    }
+                }
+
+                // Upgrade builtins from embedded content
+                println!("Builtins:");
+                let builtin_results = upgrade_builtins();
+                for (name, updated) in &builtin_results {
+                    if *updated {
+                        println!("  Updated: {}", name);
+                        total_updated += 1;
+                    } else {
+                        println!("  Up to date: {}", name);
+                    }
+                }
+
+                // Upgrade git packages
+                match packages::upgrade_all() {
+                    Ok(results) => {
+                        if !results.is_empty() {
+                            println!("\nPackages:");
+                            for (name, updated) in &results {
+                                if *updated {
+                                    println!("  Updated: {}", name);
+                                    total_updated += 1;
+                                } else {
+                                    println!("  Up to date: {}", name);
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => eprintln!("\nError upgrading packages: {}", e),
+                }
+
+                if total_updated > 0 {
+                    println!("\n{} item(s) updated.", total_updated);
+                    // Reload plugins after updates
+                    repl.reload(&config.prompt.theme);
+                } else {
+                    println!("\nEverything is up to date.");
+                }
+                continue;
+            }
+            ReadlineResult::Line(line) if line == "/packages" => {
+                let registry = packages::PackageRegistry::load().unwrap_or_default();
+                let packages_list = registry.list();
+
+                if packages_list.is_empty() {
+                    println!("\nNo packages installed.");
+                    println!("Use /install USER/REPO to install packages from GitHub.\n");
+                    continue;
+                }
+
+                println!("\nInstalled packages:\n");
+                let mut package_names: Vec<String> = Vec::new();
+                for pkg in &packages_list {
+                    let (themes, plugins) = packages::get_package_contents(&pkg.name);
+                    println!("  {} (from {})", pkg.name, pkg.source);
+                    if !themes.is_empty() {
+                        println!("    Themes: {}", themes.join(", "));
+                    }
+                    if !plugins.is_empty() {
+                        println!("    Plugins: {}", plugins.join(", "));
+                    }
+                    package_names.push(pkg.name.clone());
+                }
+                println!();
+
+                let mut options: Vec<String> = vec!["Done".to_string()];
+                for name in &package_names {
+                    options.push(format!("Remove {}", name));
+                }
+
+                let selection = Select::with_theme(&ColorfulTheme::default())
+                    .items(&options)
+                    .default(0)
+                    .interact_opt();
+
+                if let Ok(Some(idx)) = selection {
+                    if idx > 0 {
+                        let name = &package_names[idx - 1];
+
+                        // Confirm removal
+                        let confirm = Select::with_theme(&ColorfulTheme::default())
+                            .with_prompt(&format!("Remove package '{}'?", name))
+                            .items(&["No, keep it", "Yes, remove"])
+                            .default(0)
+                            .interact_opt();
+
+                        if let Ok(Some(1)) = confirm {
+                            match packages::remove_package(name) {
+                                Ok(_) => {
+                                    println!("\nRemoved package: {}", name);
+                                    // Reload plugins after removal
+                                    repl.reload(&config.prompt.theme);
+                                }
+                                Err(e) => eprintln!("Error: {}", e),
+                            }
+                        }
+                    }
                 }
                 continue;
             }

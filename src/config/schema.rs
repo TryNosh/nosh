@@ -89,7 +89,7 @@ impl Default for BehaviorConfig {
 impl Default for PromptConfig {
     fn default() -> Self {
         Self {
-            theme: "default".to_string(),
+            theme: "builtins/default".to_string(),
         }
     }
 }

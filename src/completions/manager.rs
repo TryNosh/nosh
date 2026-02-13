@@ -46,14 +46,29 @@ impl Default for CompletionManager {
 
 impl CompletionManager {
     pub fn new() -> Self {
+        // Build search paths from packages
+        let mut search_paths = Vec::new();
+
+        // Scan packages directory for completions
+        let packages_dir = paths::packages_dir();
+        if packages_dir.exists() {
+            if let Ok(entries) = std::fs::read_dir(&packages_dir) {
+                for entry in entries.flatten() {
+                    let package_path = entry.path();
+                    if package_path.is_dir() {
+                        let completions_path = package_path.join("completions");
+                        if completions_path.exists() {
+                            search_paths.push(completions_path);
+                        }
+                    }
+                }
+            }
+        }
+
         Self {
             commands: RefCell::new(HashMap::new()),
             dynamic_cache: RefCell::new(HashMap::new()),
-            search_paths: vec![
-                paths::completions_dir(),
-                paths::plugins_dir().join("builtin"),
-                paths::plugins_dir().join("community"),
-            ],
+            search_paths,
         }
     }
 

@@ -1,23 +1,23 @@
 [prompt]
 format = """
 
-[{dir}](blue bold) [{context:git_branch}](purple){context:git_status} \
-{context:package_icon} [{context:package_version}](yellow) \
-{context:rust_icon} [{context:rust_version}](red) \
-{context:node_icon} [{context:node_version}](green) \
-{context:bun_icon} [{context:bun_version}](white) \
-{context:python_icon} [{context:python_version}](blue) \
-{context:go_icon} [{context:go_version}](cyan) \
-{context:cpp_icon} [{context:cpp_version}](magenta) \
-{context:docker_icon} [{context:docker_version}](cyan) \
-[{exec_time:took}](yellow)
+[{dir}](blue bold) [{builtins/context:git_branch}](purple){builtins/context:git_status} \
+{builtins/context:package_icon} [{builtins/context:package_version}](yellow) \
+{builtins/context:rust_icon} [{builtins/context:rust_version}](red) \
+{builtins/context:node_icon} [{builtins/context:node_version}](green) \
+{builtins/context:bun_icon} [{builtins/context:bun_version}](white) \
+{builtins/context:python_icon} [{builtins/context:python_version}](blue) \
+{builtins/context:go_icon} [{builtins/context:go_version}](cyan) \
+{builtins/context:cpp_icon} [{builtins/context:cpp_version}](magenta) \
+{builtins/context:docker_icon} [{builtins/context:docker_version}](cyan) \
+[{builtins/exec_time:took}](yellow)
 [{prompt:char}](green bold) """
 char = "❯"
 char_error = "❯"
 
 [plugins]
-context = { enabled = true }
-exec_time = { enabled = true, min_ms = 1000 }
+"builtins/context" = { enabled = true }
+"builtins/exec_time" = { enabled = true, min_ms = 1000 }
 
 [colors]
 path = "#5f87af"
@@ -28,3 +28,50 @@ warning = "#d7af5f"
 success = "#87af87"
 info = "#87afd7"
 ai_command = "#af87d7"
+
+# Conditional color for temperature (weather plugins)
+# Blue for cold, cyan for cool, white for mild, yellow for warm, red for hot
+[colors.temperature]
+default = "white"
+rules = [
+  { match = "^-", color = "blue" },
+  { below = 5, color = "blue" },
+  { below = 15, color = "cyan" },
+  { above = 30, color = "red" },
+  { above = 20, color = "yellow" },
+]
+
+# Conditional color for battery percentage
+# Red for critical, yellow for low, green for good
+[colors.battery]
+default = "green"
+rules = [
+  { below = 15, color = "red" },
+  { below = 30, color = "yellow" },
+]
+
+# Conditional color for any percentage value
+# Same thresholds as battery, reusable for disk space, memory, etc.
+[colors.percentage]
+default = "green"
+rules = [
+  { below = 20, color = "red" },
+  { below = 50, color = "yellow" },
+]
+
+# Conditional color for git status indicator
+# Green when clean (empty), yellow when dirty (has changes)
+[colors.git_indicator]
+default = "green"
+rules = [
+  { not_empty = true, color = "yellow" },
+]
+
+# Conditional color for load average / CPU usage
+# Green for low, yellow for medium, red for high
+[colors.load]
+default = "green"
+rules = [
+  { above = 2.0, color = "red" },
+  { above = 1.0, color = "yellow" },
+]

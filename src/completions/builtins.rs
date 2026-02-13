@@ -82,6 +82,12 @@ fn complete_files(prefix: &str, dirs_only: bool) -> Vec<Completion> {
             (path.to_path_buf(), String::new())
         } else {
             let parent = path.parent().unwrap_or(Path::new("."));
+            // Empty parent means current directory
+            let parent = if parent.as_os_str().is_empty() {
+                Path::new(".")
+            } else {
+                parent
+            };
             let file_name = path
                 .file_name()
                 .map(|s| s.to_string_lossy().to_string())

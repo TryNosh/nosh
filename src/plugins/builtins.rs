@@ -21,34 +21,34 @@ pub const CARGO_COMPLETION: &str = include_str!("../completions/data/cargo.toml"
 pub const NPM_COMPLETION: &str = include_str!("../completions/data/npm.toml");
 pub const DOCKER_COMPLETION: &str = include_str!("../completions/data/docker.toml");
 
-/// Install built-in plugins to the user's plugins directory.
+/// Install built-in plugins to the packages/builtins directory.
 pub fn install_builtins() -> Result<()> {
-    let plugins_dir = paths::plugins_dir();
-    let builtin_dir = plugins_dir.join("builtin");
-    let themes_dir = paths::themes_dir();
-    let completions_dir = paths::completions_dir();
+    let builtins_dir = paths::packages_dir().join("builtins");
+    let builtins_plugins = builtins_dir.join("plugins");
+    let builtins_themes = builtins_dir.join("themes");
+    let builtins_completions = builtins_dir.join("completions");
 
     // Create directories
-    fs::create_dir_all(&builtin_dir)?;
-    fs::create_dir_all(&themes_dir)?;
-    fs::create_dir_all(&completions_dir)?;
+    fs::create_dir_all(&builtins_plugins)?;
+    fs::create_dir_all(&builtins_themes)?;
+    fs::create_dir_all(&builtins_completions)?;
 
     // Install plugins (only if they don't exist)
-    install_if_missing(&builtin_dir.join("git.toml"), GIT_PLUGIN)?;
-    install_if_missing(&builtin_dir.join("exec_time.toml"), EXEC_TIME_PLUGIN)?;
-    install_if_missing(&builtin_dir.join("context.toml"), CONTEXT_PLUGIN)?;
+    install_if_missing(&builtins_plugins.join("git.toml"), GIT_PLUGIN)?;
+    install_if_missing(&builtins_plugins.join("exec_time.toml"), EXEC_TIME_PLUGIN)?;
+    install_if_missing(&builtins_plugins.join("context.toml"), CONTEXT_PLUGIN)?;
 
     // Install default theme
-    install_if_missing(&themes_dir.join("default.toml"), DEFAULT_THEME)?;
+    install_if_missing(&builtins_themes.join("default.toml"), DEFAULT_THEME)?;
 
     // Install init script
     install_if_missing(&paths::init_file(), INIT_SCRIPT)?;
 
     // Install completions
-    install_if_missing(&completions_dir.join("git.toml"), GIT_COMPLETION)?;
-    install_if_missing(&completions_dir.join("cargo.toml"), CARGO_COMPLETION)?;
-    install_if_missing(&completions_dir.join("npm.toml"), NPM_COMPLETION)?;
-    install_if_missing(&completions_dir.join("docker.toml"), DOCKER_COMPLETION)?;
+    install_if_missing(&builtins_completions.join("git.toml"), GIT_COMPLETION)?;
+    install_if_missing(&builtins_completions.join("cargo.toml"), CARGO_COMPLETION)?;
+    install_if_missing(&builtins_completions.join("npm.toml"), NPM_COMPLETION)?;
+    install_if_missing(&builtins_completions.join("docker.toml"), DOCKER_COMPLETION)?;
 
     Ok(())
 }
@@ -68,7 +68,6 @@ pub enum ConfigFile {
     GitPlugin,
     ExecTimePlugin,
     ContextPlugin,
-    InitScript,
     GitCompletion,
     CargoCompletion,
     NpmCompletion,
@@ -78,16 +77,16 @@ pub enum ConfigFile {
 impl ConfigFile {
     /// Get the file path for this config file.
     pub fn path(&self) -> std::path::PathBuf {
+        let builtins_dir = paths::packages_dir().join("builtins");
         match self {
-            ConfigFile::Theme => paths::themes_dir().join("default.toml"),
-            ConfigFile::GitPlugin => paths::plugins_dir().join("builtin").join("git.toml"),
-            ConfigFile::ExecTimePlugin => paths::plugins_dir().join("builtin").join("exec_time.toml"),
-            ConfigFile::ContextPlugin => paths::plugins_dir().join("builtin").join("context.toml"),
-            ConfigFile::InitScript => paths::init_file(),
-            ConfigFile::GitCompletion => paths::completions_dir().join("git.toml"),
-            ConfigFile::CargoCompletion => paths::completions_dir().join("cargo.toml"),
-            ConfigFile::NpmCompletion => paths::completions_dir().join("npm.toml"),
-            ConfigFile::DockerCompletion => paths::completions_dir().join("docker.toml"),
+            ConfigFile::Theme => builtins_dir.join("themes").join("default.toml"),
+            ConfigFile::GitPlugin => builtins_dir.join("plugins").join("git.toml"),
+            ConfigFile::ExecTimePlugin => builtins_dir.join("plugins").join("exec_time.toml"),
+            ConfigFile::ContextPlugin => builtins_dir.join("plugins").join("context.toml"),
+            ConfigFile::GitCompletion => builtins_dir.join("completions").join("git.toml"),
+            ConfigFile::CargoCompletion => builtins_dir.join("completions").join("cargo.toml"),
+            ConfigFile::NpmCompletion => builtins_dir.join("completions").join("npm.toml"),
+            ConfigFile::DockerCompletion => builtins_dir.join("completions").join("docker.toml"),
         }
     }
 
@@ -98,7 +97,6 @@ impl ConfigFile {
             ConfigFile::GitPlugin => GIT_PLUGIN,
             ConfigFile::ExecTimePlugin => EXEC_TIME_PLUGIN,
             ConfigFile::ContextPlugin => CONTEXT_PLUGIN,
-            ConfigFile::InitScript => INIT_SCRIPT,
             ConfigFile::GitCompletion => GIT_COMPLETION,
             ConfigFile::CargoCompletion => CARGO_COMPLETION,
             ConfigFile::NpmCompletion => NPM_COMPLETION,
@@ -113,27 +111,11 @@ impl ConfigFile {
             ConfigFile::GitPlugin => "Git plugin",
             ConfigFile::ExecTimePlugin => "Exec time plugin",
             ConfigFile::ContextPlugin => "Context plugin",
-            ConfigFile::InitScript => "Init script",
             ConfigFile::GitCompletion => "Git completions",
             ConfigFile::CargoCompletion => "Cargo completions",
             ConfigFile::NpmCompletion => "npm completions",
             ConfigFile::DockerCompletion => "Docker completions",
         }
-    }
-
-    /// All updatable config files.
-    pub fn all() -> &'static [ConfigFile] {
-        &[
-            ConfigFile::Theme,
-            ConfigFile::GitPlugin,
-            ConfigFile::ExecTimePlugin,
-            ConfigFile::ContextPlugin,
-            ConfigFile::InitScript,
-            ConfigFile::GitCompletion,
-            ConfigFile::CargoCompletion,
-            ConfigFile::NpmCompletion,
-            ConfigFile::DockerCompletion,
-        ]
     }
 }
 
@@ -157,6 +139,34 @@ pub fn config_needs_update(file: ConfigFile) -> bool {
         Ok(content) => content != file.content(),
         Err(_) => true,
     }
+}
+
+/// Upgrade all builtins to the latest embedded versions.
+/// Returns a list of (file_name, was_updated) for files that were checked.
+pub fn upgrade_builtins() -> Vec<(&'static str, bool)> {
+    let builtins = [
+        ConfigFile::Theme,
+        ConfigFile::GitPlugin,
+        ConfigFile::ExecTimePlugin,
+        ConfigFile::ContextPlugin,
+        ConfigFile::GitCompletion,
+        ConfigFile::CargoCompletion,
+        ConfigFile::NpmCompletion,
+        ConfigFile::DockerCompletion,
+    ];
+
+    builtins
+        .iter()
+        .map(|file| {
+            let name = file.display_name();
+            if config_needs_update(*file) {
+                let updated = update_config(*file).is_ok();
+                (name, updated)
+            } else {
+                (name, false)
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]

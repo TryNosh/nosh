@@ -57,6 +57,23 @@ impl rustyline::completion::Candidate for NoshCandidate {
     }
 }
 
+/// Available slash commands with descriptions.
+const SLASH_COMMANDS: &[(&str, &str)] = &[
+    ("/setup", "Run setup wizard to sign in"),
+    ("/usage", "Show usage, balance, manage subscription"),
+    ("/buy", "Buy tokens or subscribe to a plan"),
+    ("/config", "Open or edit config files"),
+    ("/create", "Create or link a nosh package"),
+    ("/install", "Install package from GitHub"),
+    ("/upgrade", "Update builtins and all packages"),
+    ("/packages", "List and manage installed packages"),
+    ("/convert-zsh", "Convert zsh completion to TOML"),
+    ("/clear", "Clear AI conversation context"),
+    ("/reload", "Reload config and theme"),
+    ("/debug", "Debug plugins and theme"),
+    ("/help", "Show help"),
+];
+
 impl Completer for NoshHelper {
     type Candidate = NoshCandidate;
 
@@ -69,6 +86,11 @@ impl Completer for NoshHelper {
         // Check if we're in AI mode (line starts with ? or ??)
         if line.starts_with('?') {
             return self.complete_ai_mode(line, pos);
+        }
+
+        // Check if we're completing a slash command
+        if line.starts_with('/') {
+            return self.complete_slash_command(line, pos);
         }
 
         let completions = self.completion_manager.complete(line, pos);
@@ -84,6 +106,26 @@ impl Completer for NoshHelper {
 }
 
 impl NoshHelper {
+    /// Complete slash commands.
+    fn complete_slash_command(
+        &self,
+        line: &str,
+        pos: usize,
+    ) -> rustyline::Result<(usize, Vec<NoshCandidate>)> {
+        let prefix = &line[..pos];
+
+        let candidates: Vec<NoshCandidate> = SLASH_COMMANDS
+            .iter()
+            .filter(|(cmd, _)| cmd.starts_with(prefix))
+            .map(|(cmd, desc)| NoshCandidate {
+                text: cmd.to_string(),
+                display: format!("{:<15} -- {}", cmd, desc),
+            })
+            .collect();
+
+        Ok((0, candidates))
+    }
+
     /// Complete in AI mode using English word list.
     fn complete_ai_mode(
         &self,
@@ -131,6 +173,14 @@ impl Hinter for NoshHelper {
         // Don't show hints for very short input
         if line.len() < 2 {
             return None;
+        }
+
+        // Slash command hints
+        if line.starts_with('/') {
+            return SLASH_COMMANDS
+                .iter()
+                .find(|(cmd, _)| cmd.starts_with(line) && cmd.len() > line.len())
+                .map(|(cmd, _)| cmd[line.len()..].to_string());
         }
 
         // AI mode hints

@@ -70,8 +70,14 @@ pub fn init_file() -> PathBuf {
     nosh_config_dir().join("init.sh")
 }
 
-/// Returns the path to the completions directory.
-/// `~/.config/nosh/completions/`
-pub fn completions_dir() -> PathBuf {
-    nosh_config_dir().join("completions")
+/// Returns the path to the packages directory.
+/// `~/.config/nosh/packages/`
+pub fn packages_dir() -> PathBuf {
+    nosh_config_dir().join("packages")
+}
+
+/// Returns the path to the packages registry file.
+/// `~/.config/nosh/packages.toml`
+pub fn packages_file() -> PathBuf {
+    nosh_config_dir().join("packages.toml")
 }

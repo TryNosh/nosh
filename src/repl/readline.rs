@@ -50,15 +50,14 @@ impl Repl {
         let mut editor = Editor::with_history(config, history)?;
         editor.set_helper(Some(helper));
 
-        // Bind Up/Down arrows to prefix-based history search
-        // When there's text before the cursor, search for matching prefix
+        // Bind Up/Down arrows to history navigation (cursor moves to end)
         editor.bind_sequence(
             KeyEvent(KeyCode::Up, Modifiers::NONE),
-            EventHandler::Simple(Cmd::HistorySearchBackward),
+            EventHandler::Simple(Cmd::PreviousHistory),
         );
         editor.bind_sequence(
             KeyEvent(KeyCode::Down, Modifiers::NONE),
-            EventHandler::Simple(Cmd::HistorySearchForward),
+            EventHandler::Simple(Cmd::NextHistory),
         );
 
         // Load plugins and theme
@@ -101,16 +100,21 @@ impl Repl {
         }
     }
 
-    pub fn prompt(&mut self) -> String {
-        // Invalidate plugin cache for fresh values
-        self.plugin_manager.invalidate_cache();
+    /// Generate the prompt string asynchronously.
+    /// Uses parallel plugin execution with soft/hard timeouts.
+    pub async fn prompt(&mut self) -> String {
+        // Get all plugin variables needed from theme
+        let vars = self.theme.get_plugin_variables();
 
-        // Format prompt using theme
-        self.theme.format_prompt(&mut self.plugin_manager)
+        // Fetch all variables in parallel with soft timeout
+        let values = self.plugin_manager.get_variables(vars).await;
+
+        // Format prompt with fetched values
+        self.theme.format_prompt_with_values(&values, &mut self.plugin_manager)
     }
 
-    pub fn readline(&mut self) -> Result<ReadlineResult> {
-        let prompt = self.prompt();
+    pub async fn readline(&mut self) -> Result<ReadlineResult> {
+        let prompt = self.prompt().await;
         match self.editor.readline(&prompt) {
             Ok(line) => {
                 let line = line.trim().to_string();
@@ -134,5 +138,20 @@ impl Repl {
 
         // Reload theme
         self.theme = Theme::load(theme_name).unwrap_or_default();
+    }
+
+    /// List all loaded plugins.
+    pub fn list_plugins(&self) -> Vec<(&str, &str, Vec<&str>)> {
+        self.plugin_manager.list_plugins()
+    }
+
+    /// Debug a specific plugin.
+    pub async fn debug_plugin(&self, plugin_name: &str) -> Option<Vec<(String, String, Result<String, String>)>> {
+        self.plugin_manager.debug_plugin(plugin_name).await
+    }
+
+    /// Get variables used by current theme.
+    pub fn theme_variables(&self) -> Vec<String> {
+        self.theme.get_plugin_variables()
     }
 }
