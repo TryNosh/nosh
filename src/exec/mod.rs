@@ -1,3 +1,4 @@
+pub mod env;
 mod shell;
 pub mod terminal;
 

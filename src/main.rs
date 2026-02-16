@@ -200,6 +200,10 @@ async fn main() -> Result<()> {
     // Handle --setup flag
     let force_setup = args.iter().any(|a| a == "--setup");
 
+    // Initialize environment (source shell profiles to get PATH)
+    // This is needed when nosh is used as a login shell
+    exec::env::init();
+
     // Initialize terminal control for job control support (Ctrl+Z, fg, bg, jobs)
     if let Err(e) = exec::terminal::init() {
         eprintln!("Warning: Could not initialize job control: {}", e);
