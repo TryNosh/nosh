@@ -290,6 +290,7 @@ async fn main() -> Result<()> {
                 println!("  /clear              Clear AI conversation context");
                 println!("  /reload             Reload config and theme");
                 println!("  /debug [plugin]     Debug plugins and theme");
+                println!("  /version            Show nosh version");
                 println!("  /help               Show this help");
                 println!("  exit                Quit nosh");
                 println!("\nUsage:");
@@ -304,6 +305,10 @@ async fn main() -> Result<()> {
             ReadlineResult::Line(line) if line == "/clear" => {
                 ai_context.clear();
                 println!("AI context cleared.");
+                continue;
+            }
+            ReadlineResult::Line(line) if line == "/version" => {
+                println!("nosh v{}", env!("CARGO_PKG_VERSION"));
                 continue;
             }
             ReadlineResult::Line(line) if line == "/reload" => {
