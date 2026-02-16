@@ -17,6 +17,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 OUTPUT_DIR="$PROJECT_ROOT/server/public/releases"
 
+# Compile-time cloud URL (baked into release binary)
+export NOSH_CLOUD_URL="https://noshell.dev/api"
+
 # Targets to build
 TARGETS=(
     "x86_64-apple-darwin"
@@ -43,10 +46,15 @@ check_deps() {
         error "cargo not found. Install Rust first."
     fi
 
-    # Check for cross (needed for cross-compilation)
-    if ! command -v cross &>/dev/null; then
-        warn "cross not found. Installing..."
-        cargo install cross
+    # Check for zigbuild (simpler cross-compilation, no Docker needed)
+    if ! command -v cargo-zigbuild &>/dev/null; then
+        warn "cargo-zigbuild not found. Installing..."
+        cargo install cargo-zigbuild
+    fi
+
+    # Check for zig
+    if ! command -v zig &>/dev/null; then
+        error "zig not found. Install with: brew install zig"
     fi
 }
 
@@ -100,8 +108,8 @@ notarize_macos_binary() {
     tmp_dir=$(mktemp -d)
     local zip_path="$tmp_dir/nosh-${target}.zip"
 
-    # Create zip for notarization
-    zip -j "$zip_path" "$binary_path"
+    # Create zip for notarization (ditto preserves extended attributes)
+    ditto -c -k --keepParent "$binary_path" "$zip_path"
 
     info "Submitting to Apple for notarization..."
     xcrun notarytool submit "$zip_path" \
@@ -133,16 +141,18 @@ build_target() {
         return 0
     fi
 
+    # Add target if needed
+    rustup target add "$target" 2>/dev/null || true
+
     if [ "$target" = "$current_platform" ]; then
         # Native build
         cargo build --release --target "$target"
     elif [ "$is_macos_target" = true ]; then
         # macOS cross-compile (Intel <-> ARM on macOS)
-        rustup target add "$target" 2>/dev/null || true
         cargo build --release --target "$target"
     else
-        # Cross-compile to Linux
-        cross build --release --target "$target"
+        # Cross-compile to Linux using zigbuild
+        cargo zigbuild --release --target "$target"
     fi
 
     local binary_path="$PROJECT_ROOT/target/$target/release/nosh"
@@ -173,6 +183,8 @@ main() {
     info "Building nosh release binaries"
     info "Output: $OUTPUT_DIR"
     echo
+
+    info "Cloud URL: $NOSH_CLOUD_URL"
 
     # Check signing setup
     if [ -n "$APPLE_DEVELOPER_ID" ]; then

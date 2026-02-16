@@ -133,8 +133,7 @@ impl CloudClient {
     pub fn new(token: &str) -> Self {
         Self {
             client: Client::new(),
-            base_url: std::env::var("NOSH_CLOUD_URL")
-                .unwrap_or_else(|_| "https://nosh.sh/api".to_string()),
+            base_url: crate::config::cloud_url(),
             token: token.to_string(),
         }
     }

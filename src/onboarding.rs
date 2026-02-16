@@ -88,7 +88,7 @@ pub async fn run_onboarding() -> Result<OnboardingChoice> {
 }
 
 fn get_cloud_url() -> String {
-    std::env::var("NOSH_CLOUD_URL").unwrap_or_else(|_| "https://nosh.sh/api".to_string())
+    crate::config::cloud_url()
 }
 
 async fn setup_cloud() -> Result<()> {
