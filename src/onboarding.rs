@@ -172,7 +172,13 @@ async fn setup_cloud() -> Result<()> {
             return Err(anyhow!("Authentication timed out. Please try again."));
         }
 
-        tokio::time::sleep(Duration::from_secs(2)).await;
+        tokio::select! {
+            _ = tokio::time::sleep(Duration::from_secs(2)) => {}
+            _ = tokio::signal::ctrl_c() => {
+                writeln!(stdout)?;
+                return Err(anyhow!("Authentication cancelled."));
+            }
+        }
 
         let response = client
             .post(format!("{}/auth/device/token", base_url))
