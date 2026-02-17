@@ -227,7 +227,13 @@ impl CompletionManager {
 
     /// Complete command names (executables from PATH).
     /// Enhances results with descriptions from TOML files when available.
+    /// Falls back to file completion for path-like prefixes (e.g., "./", "../", "/").
     fn complete_command(&self, prefix: &str) -> Vec<Completion> {
+        // Path-like prefix: complete files instead of searching PATH
+        if prefix.starts_with("./") || prefix.starts_with("../") || prefix.starts_with('/') {
+            return BuiltinCompleter::Files.complete(prefix);
+        }
+
         let mut completions = BuiltinCompleter::Executables.complete(prefix);
 
         // Enhance with descriptions from our completion files
