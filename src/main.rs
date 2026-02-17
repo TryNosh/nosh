@@ -292,7 +292,8 @@ async fn main() -> Result<()> {
                 println!("  /config             Open or edit config files");
                 println!("  /create             Create or link a nosh package");
                 println!("  /install USER/REPO  Install theme/plugin package from GitHub");
-                println!("  /upgrade            Update all installed packages");
+                println!("  /upgrade            Upgrade nosh to latest version");
+                println!("  /sync               Sync config, builtins, and packages");
                 println!("  /packages           List and manage installed packages");
                 println!("  /convert-zsh FILE   Convert zsh completion to nosh TOML");
                 println!("  /clear              Clear AI conversation context");
@@ -1004,7 +1005,69 @@ description = "Show version"
                 continue;
             }
             ReadlineResult::Line(line) if line == "/upgrade" => {
-                println!("Checking for updates...\n");
+                println!("Checking for latest version...\n");
+
+                let current = env!("CARGO_PKG_VERSION");
+                let latest = (|| -> Result<String, Box<dyn std::error::Error>> {
+                    let output = std::process::Command::new("curl")
+                        .args(["-fsSL", "https://noshell.dev/version.json"])
+                        .output()?;
+                    if !output.status.success() {
+                        return Err("Failed to fetch version info".into());
+                    }
+                    let json: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+                    json["version"]
+                        .as_str()
+                        .map(|s| s.to_string())
+                        .ok_or_else(|| "Missing version field".into())
+                })();
+
+                match latest {
+                    Ok(latest) if latest == current => {
+                        println!("nosh is up to date (v{current})");
+                    }
+                    Ok(latest) => {
+                        println!("Current version: v{current}");
+                        println!("Latest version:  v{latest}\n");
+                        print!("Upgrade now? [Y/n] ");
+                        std::io::Write::flush(&mut std::io::stdout()).ok();
+
+                        let mut answer = String::new();
+                        std::io::stdin().read_line(&mut answer).ok();
+                        let answer = answer.trim().to_lowercase();
+
+                        if answer.is_empty() || answer == "y" || answer == "yes" {
+                            println!("\nDownloading and installing...\n");
+                            let status = std::process::Command::new("sh")
+                                .args(["-c", "curl -fsSL https://noshell.dev/install.sh | sh"])
+                                .status();
+
+                            match status {
+                                Ok(s) if s.success() => {
+                                    println!("\nRestarting nosh...\n");
+                                    let exe = std::env::current_exe().unwrap_or_else(|_| "nosh".into());
+                                    let args: Vec<String> = std::env::args().collect();
+                                    let err = std::os::unix::process::CommandExt::exec(
+                                        std::process::Command::new(&exe).args(&args[1..]),
+                                    );
+                                    eprintln!("Failed to restart: {err}");
+                                }
+                                _ => {
+                                    eprintln!("Installation failed. Try manually: curl -fsSL https://noshell.dev/install.sh | sh");
+                                }
+                            }
+                        } else {
+                            println!("Upgrade cancelled.");
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to check for updates: {e}");
+                    }
+                }
+                continue;
+            }
+            ReadlineResult::Line(line) if line == "/sync" => {
+                println!("Syncing config and packages...\n");
                 let mut total_updated = 0;
 
                 // Regenerate missing config.toml
