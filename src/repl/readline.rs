@@ -33,14 +33,14 @@ pub struct Repl {
 }
 
 impl Repl {
-    pub fn new(theme_name: &str, _history_load_count: Option<usize>) -> Result<Self> {
+    pub fn new(theme_name: &str, _history_load_count: Option<usize>, syntax_highlighting: bool) -> Result<Self> {
         // Create SQLite-backed history with lazy loading
         let history = SqliteRustylineHistory::open(&paths::history_db())
             .map_err(|e| anyhow::anyhow!("Failed to open history: {}", e))?;
 
         // Create completion manager (lazy-loading)
         let completion_manager = Arc::new(CompletionManager::new());
-        let helper = NoshHelper::new(Arc::clone(&completion_manager));
+        let helper = NoshHelper::new(Arc::clone(&completion_manager), syntax_highlighting);
 
         // Configure rustyline with our SQLite history and helper
         let config = Config::builder()

@@ -1,6 +1,7 @@
 //! NoshHelper for rustyline - implements Completer, Hinter, Highlighter, and Validator.
 
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use rustyline::completion::Completer;
@@ -12,14 +13,36 @@ use rustyline::{Context, Helper};
 use super::words;
 use crate::completions::{Completion, CompletionManager};
 
+/// Shell builtins recognized as valid commands.
+const SHELL_BUILTINS: &[&str] = &[
+    "cd", "echo", "exit", "export", "source", "alias", "unalias", "set", "unset",
+    "eval", "exec", "read", "test", "true", "false", "pwd", "type", "hash",
+    "umask", "wait", "trap", "return", "shift", "break", "continue", "builtin",
+    "command", "declare", "local", "readonly", "typeset", "let", "bg", "fg", "jobs",
+    "kill", "suspend", "logout", "history", "help", "pushd", "popd", "dirs",
+    "shopt", "printf", "getopts", "ulimit", "times", "bind", "complete", "compgen",
+    "caller", "enable", "mapfile", "readarray",
+];
+
 /// Rustyline helper providing completions, hints, and highlighting.
 pub struct NoshHelper {
     completion_manager: Arc<CompletionManager>,
+    syntax_highlighting: bool,
+    command_cache: HashSet<String>,
 }
 
 impl NoshHelper {
-    pub fn new(completion_manager: Arc<CompletionManager>) -> Self {
-        Self { completion_manager }
+    pub fn new(completion_manager: Arc<CompletionManager>, syntax_highlighting: bool) -> Self {
+        let command_cache = if syntax_highlighting {
+            build_command_cache()
+        } else {
+            HashSet::new()
+        };
+        Self {
+            completion_manager,
+            syntax_highlighting,
+            command_cache,
+        }
     }
 }
 
@@ -230,6 +253,8 @@ impl Highlighter for NoshHelper {
                 "\x1b[1m\x1b[38;5;45m?\x1b[0m\x1b[38;5;250m{}\x1b[0m",
                 rest
             ))
+        } else if self.syntax_highlighting {
+            Cow::Owned(self.highlight_shell(line))
         } else {
             Cow::Borrowed(line)
         }
@@ -311,6 +336,167 @@ impl Validator for NoshHelper {
 }
 
 impl Helper for NoshHelper {}
+
+/// Build a cache of valid commands by scanning PATH directories.
+fn build_command_cache() -> HashSet<String> {
+    let mut commands: HashSet<String> = SHELL_BUILTINS.iter().map(|s| s.to_string()).collect();
+
+    if let Ok(path_var) = std::env::var("PATH") {
+        for dir in path_var.split(':') {
+            if let Ok(entries) = std::fs::read_dir(dir) {
+                for entry in entries.filter_map(|e| e.ok()) {
+                    if let Some(name) = entry.file_name().to_str() {
+                        commands.insert(name.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    commands
+}
+
+impl NoshHelper {
+    /// Syntax-highlight a shell input line.
+    fn highlight_shell(&self, line: &str) -> String {
+        let mut result = String::with_capacity(line.len() * 2);
+        let bytes = line.as_bytes();
+        let len = bytes.len();
+        let mut i = 0;
+        // Track whether we've seen the command (first word) in the current simple command
+        let mut expect_command = true;
+
+        while i < len {
+            let c = bytes[i];
+
+            // Comments
+            if c == b'#' && (i == 0 || bytes[i - 1] == b' ' || bytes[i - 1] == b'\t') {
+                result.push_str("\x1b[90m");
+                result.push_str(&line[i..]);
+                result.push_str("\x1b[0m");
+                return result;
+            }
+
+            // Strings
+            if c == b'\'' || c == b'"' {
+                let quote = c;
+                let start = i;
+                i += 1;
+                while i < len && bytes[i] != quote {
+                    if quote == b'"' && bytes[i] == b'\\' && i + 1 < len {
+                        i += 1;
+                    }
+                    i += 1;
+                }
+                if i < len {
+                    i += 1; // closing quote
+                }
+                result.push_str("\x1b[32m");
+                result.push_str(&line[start..i]);
+                result.push_str("\x1b[0m");
+                expect_command = false;
+                continue;
+            }
+
+            // Variables
+            if c == b'$' && i + 1 < len {
+                let start = i;
+                i += 1;
+                if i < len && bytes[i] == b'{' {
+                    // ${VAR}
+                    i += 1;
+                    while i < len && bytes[i] != b'}' {
+                        i += 1;
+                    }
+                    if i < len {
+                        i += 1;
+                    }
+                } else {
+                    while i < len && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+                        i += 1;
+                    }
+                }
+                result.push_str("\x1b[33m");
+                result.push_str(&line[start..i]);
+                result.push_str("\x1b[0m");
+                expect_command = false;
+                continue;
+            }
+
+            // Operators
+            if c == b'|' || c == b'>' || c == b'<' || c == b';' || c == b'&' {
+                let start = i;
+                // Handle multi-char operators
+                if c == b'|' && i + 1 < len && bytes[i + 1] == b'|' {
+                    i += 2;
+                } else if c == b'&' && i + 1 < len && bytes[i + 1] == b'&' {
+                    i += 2;
+                } else if c == b'>' && i + 1 < len && bytes[i + 1] == b'>' {
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+                result.push_str("\x1b[36m");
+                result.push_str(&line[start..i]);
+                result.push_str("\x1b[0m");
+                // After a pipe or ;/&& the next word is a command
+                expect_command = true;
+                continue;
+            }
+
+            // Whitespace
+            if c == b' ' || c == b'\t' {
+                result.push(c as char);
+                i += 1;
+                continue;
+            }
+
+            // Words (commands, flags, arguments)
+            let start = i;
+            while i < len
+                && bytes[i] != b' '
+                && bytes[i] != b'\t'
+                && bytes[i] != b'|'
+                && bytes[i] != b'>'
+                && bytes[i] != b'<'
+                && bytes[i] != b';'
+                && bytes[i] != b'&'
+                && bytes[i] != b'\''
+                && bytes[i] != b'"'
+                && bytes[i] != b'$'
+                && bytes[i] != b'#'
+            {
+                i += 1;
+            }
+            let word = &line[start..i];
+
+            if expect_command {
+                // Command position: bold if known, red if unknown
+                if word.contains('/') || self.command_cache.contains(word) {
+                    // Known command or path — bold
+                    result.push_str("\x1b[1m");
+                    result.push_str(word);
+                    result.push_str("\x1b[0m");
+                } else {
+                    // Unknown command — red
+                    result.push_str("\x1b[31m");
+                    result.push_str(word);
+                    result.push_str("\x1b[0m");
+                }
+                expect_command = false;
+            } else if word.starts_with('-') {
+                // Flag — blue
+                result.push_str("\x1b[34m");
+                result.push_str(word);
+                result.push_str("\x1b[0m");
+            } else {
+                result.push_str(word);
+            }
+        }
+
+        result
+    }
+}
 
 /// Find the start of the current word being completed.
 fn find_word_start(line: &str, pos: usize) -> usize {

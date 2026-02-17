@@ -243,7 +243,7 @@ async fn main() -> Result<()> {
     }
 
     // Initialize REPL with theme from config
-    let mut repl = Repl::new(&config.prompt.theme, Some(config.history.load_count))?;
+    let mut repl = Repl::new(&config.prompt.theme, Some(config.history.load_count), config.prompt.syntax_highlighting)?;
     repl.load_history();
 
     // Create persistent shell session (brush-based bash interpreter)

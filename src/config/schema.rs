@@ -44,6 +44,8 @@ pub struct BehaviorConfig {
 pub struct PromptConfig {
     /// Theme name
     pub theme: String,
+    /// Enable syntax highlighting for shell input
+    pub syntax_highlighting: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -90,6 +92,7 @@ impl Default for PromptConfig {
     fn default() -> Self {
         Self {
             theme: "builtins/default".to_string(),
+            syntax_highlighting: true,
         }
     }
 }

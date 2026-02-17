@@ -32,6 +32,9 @@ show_command = true
 # Theme name (see Theme Naming below)
 theme = "builtins/default"
 
+# Syntax highlighting for shell input
+syntax_highlighting = true
+
 [history]
 # Commands to load for arrow-key navigation
 load_count = 200
@@ -66,6 +69,7 @@ load_count = 200
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `theme` | string | `"builtins/default"` | Active theme (see naming below) |
+| `syntax_highlighting` | bool | `true` | Syntax highlighting for shell input |
 
 ### `[history]` Section
 
@@ -166,7 +170,8 @@ If `~/.nosh/` exists and `~/.config/nosh/` doesn't, nosh uses `~/.nosh/` for bac
 | `/config` | Open or edit config files |
 | `/create` | Create or link a nosh package |
 | `/install user/repo` | Install package from GitHub |
-| `/upgrade` | Update builtins and all packages |
+| `/upgrade` | Upgrade nosh to latest version |
+| `/sync` | Sync config, builtins, and packages |
 | `/packages` | List and manage installed packages |
 | `/convert-zsh FILE` | Convert zsh completion to TOML |
 | `/clear` | Clear AI conversation context |
