@@ -50,14 +50,15 @@ impl Repl {
         let mut editor = Editor::with_history(config, history)?;
         editor.set_helper(Some(helper));
 
-        // Bind Up/Down arrows to history navigation (cursor moves to end)
+        // Bind Up/Down arrows to prefix-based history search
+        // If line has text, only show history entries starting with that text
         editor.bind_sequence(
             KeyEvent(KeyCode::Up, Modifiers::NONE),
-            EventHandler::Simple(Cmd::PreviousHistory),
+            EventHandler::Simple(Cmd::HistorySearchBackward),
         );
         editor.bind_sequence(
             KeyEvent(KeyCode::Down, Modifiers::NONE),
-            EventHandler::Simple(Cmd::NextHistory),
+            EventHandler::Simple(Cmd::HistorySearchForward),
         );
 
         // Load plugins and theme
