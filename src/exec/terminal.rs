@@ -127,3 +127,29 @@ fn set_title(title: &str) {
     let _ = write!(std::io::stdout(), "\x1b]0;{}\x07", title);
     let _ = std::io::stdout().flush();
 }
+
+/// Emit OSC 7 to tell the terminal the current working directory.
+/// This enables "new tab in same directory" in Terminal.app, iTerm2, etc.
+pub fn notify_cwd() {
+    if !std::io::stdout().is_terminal() {
+        return;
+    }
+
+    let cwd = match std::env::current_dir() {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+
+    let hostname = hostname::get()
+        .map(|h| h.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    // OSC 7: file://hostname/path
+    let _ = write!(
+        std::io::stdout(),
+        "\x1b]7;file://{}{}\x1b\\",
+        hostname,
+        cwd.display()
+    );
+    let _ = std::io::stdout().flush();
+}

@@ -257,8 +257,9 @@ async fn main() -> Result<()> {
             .map(|p| p.display().to_string())
             .unwrap_or_else(|_| ".".to_string());
 
-        // Update terminal title to show current directory
+        // Update terminal title and notify cwd (for "new tab in same dir")
         exec::terminal::set_title_to_cwd();
+        exec::terminal::notify_cwd();
 
         match repl.readline().await? {
             ReadlineResult::Eof => break,
