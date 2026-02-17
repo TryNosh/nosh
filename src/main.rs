@@ -154,6 +154,12 @@ use safety::{parse_command, prompt_for_permission, PermissionChoice, PermissionS
 async fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
 
+    // Handle --version
+    if args.iter().any(|a| a == "--version" || a == "-V") {
+        println!("nosh v{}", env!("CARGO_PKG_VERSION"));
+        std::process::exit(0);
+    }
+
     // Handle --help
     if args.iter().any(|a| a == "--help" || a == "-h") {
         println!("nosh v{}", env!("CARGO_PKG_VERSION"));
@@ -163,6 +169,7 @@ async fn main() -> Result<()> {
         println!("  convert-zsh FILE   Convert zsh completion file to nosh TOML format");
         println!("\nOptions:");
         println!("  --setup            Run setup wizard to sign in");
+        println!("  --version          Show version");
         println!("  --help             Show this help message");
         println!("\nIn the shell:");
         println!("  command    Run command directly");
