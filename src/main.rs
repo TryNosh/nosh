@@ -1231,17 +1231,22 @@ description = "Show version"
                     println!(); // Separate from previous step
                     let ai_spinner = ui::spinner::create();
 
-                    let step = match client
-                        .agentic_step(input, &cwd, Some(&ai_context), &executions)
-                        .await
-                    {
-                        Ok(s) => {
+                    let fut = client.agentic_step(input, &cwd, Some(&ai_context), &executions);
+                    let step = tokio::select! {
+                        res = fut => match res {
+                            Ok(s) => {
+                                ai_spinner.finish_and_clear();
+                                s
+                            }
+                            Err(e) => {
+                                ai_spinner.finish_and_clear();
+                                eprintln!("AI error: {}", e);
+                                break;
+                            }
+                        },
+                        _ = tokio::signal::ctrl_c() => {
                             ai_spinner.finish_and_clear();
-                            s
-                        }
-                        Err(e) => {
-                            ai_spinner.finish_and_clear();
-                            eprintln!("AI error: {}", e);
+                            println!("\nCancelled.");
                             break;
                         }
                     };
@@ -1324,35 +1329,41 @@ description = "Show version"
                             spinner.set_message("Running...");
                             spinner.enable_steady_tick(std::time::Duration::from_millis(100));
 
-                            // Capture output by running through shell (async so spinner can tick)
-                            let output = match tokio::process::Command::new("sh")
+                            // Capture output by running through shell (Ctrl+C cancels agentic loop)
+                            let cmd_fut = tokio::process::Command::new("sh")
                                 .arg("-c")
                                 .arg(&command)
                                 .current_dir(&cwd)
-                                .output()
-                                .await
-                            {
-                                Ok(out) => {
-                                    spinner.finish_and_clear();
-                                    let stdout = String::from_utf8_lossy(&out.stdout);
-                                    let stderr = String::from_utf8_lossy(&out.stderr);
-                                    let combined = if stderr.is_empty() {
-                                        stdout.to_string()
-                                    } else {
-                                        format!("{}\n{}", stdout, stderr)
-                                    };
+                                .output();
+                            let output = tokio::select! {
+                                res = cmd_fut => match res {
+                                    Ok(out) => {
+                                        spinner.finish_and_clear();
+                                        let stdout = String::from_utf8_lossy(&out.stdout);
+                                        let stderr = String::from_utf8_lossy(&out.stderr);
+                                        let combined = if stderr.is_empty() {
+                                            stdout.to_string()
+                                        } else {
+                                            format!("{}\n{}", stdout, stderr)
+                                        };
 
-                                    // Print output in dimmed box
-                                    let formatted = format_output(&combined);
-                                    if !formatted.is_empty() {
-                                        println!("{}", formatted);
+                                        // Print output in dimmed box
+                                        let formatted = format_output(&combined);
+                                        if !formatted.is_empty() {
+                                            println!("{}", formatted);
+                                        }
+
+                                        (combined, out.status.code().unwrap_or(1))
                                     }
-
-                                    (combined, out.status.code().unwrap_or(1))
-                                }
-                                Err(e) => {
+                                    Err(e) => {
+                                        spinner.finish_and_clear();
+                                        (format!("Error: {}", e), 1)
+                                    }
+                                },
+                                _ = tokio::signal::ctrl_c() => {
                                     spinner.finish_and_clear();
-                                    (format!("Error: {}", e), 1)
+                                    println!("\nCancelled.");
+                                    break;
                                 }
                             };
 
@@ -1383,10 +1394,18 @@ description = "Show version"
                 // Show spinner while waiting for AI
                 let spinner = ui::spinner::create();
 
-                // AI translation with conversation context
+                // AI translation with conversation context (Ctrl+C cancels)
                 let result = if let Some(token) = &creds.token {
                     let client = CloudClient::new(token);
-                    client.translate(input, &cwd, Some(&ai_context)).await.map(|(cmd, _)| cmd)
+                    let fut = client.translate(input, &cwd, Some(&ai_context));
+                    tokio::select! {
+                        res = fut => res.map(|(cmd, _)| cmd),
+                        _ = tokio::signal::ctrl_c() => {
+                            spinner.finish_and_clear();
+                            println!();
+                            continue;
+                        }
+                    }
                 } else {
                     Err(anyhow::anyhow!("Not authenticated. Run /setup to sign in."))
                 };
