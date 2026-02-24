@@ -3,8 +3,8 @@
 //! Sources the user's init.sh to set up PATH and other environment variables.
 //! This is necessary when nosh is used as a login shell.
 
-use std::process::Command;
 use crate::paths;
+use std::process::Command;
 
 /// Initialize the environment by sourcing init.sh.
 ///
@@ -18,14 +18,9 @@ pub fn init() {
     }
 
     // Source init.sh in bash and capture the resulting environment
-    let script = format!(
-        "source {} 2>/dev/null && env",
-        init_script.display()
-    );
+    let script = format!("source {} 2>/dev/null && env", init_script.display());
 
-    let output = Command::new("bash")
-        .args(["-c", &script])
-        .output();
+    let output = Command::new("bash").args(["-c", &script]).output();
 
     let output = match output {
         Ok(o) if o.status.success() => o,

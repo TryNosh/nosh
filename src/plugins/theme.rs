@@ -53,24 +53,24 @@ impl ColorRule {
     /// Check if this rule matches the given value.
     pub fn matches(&self, value: &str) -> bool {
         // Check empty condition
-        if let Some(empty) = self.empty {
-            if empty != value.is_empty() {
-                return false;
-            }
+        if let Some(empty) = self.empty
+            && empty != value.is_empty()
+        {
+            return false;
         }
 
         // Check not_empty condition
-        if let Some(not_empty) = self.not_empty {
-            if not_empty != !value.is_empty() {
-                return false;
-            }
+        if let Some(not_empty) = self.not_empty
+            && not_empty == value.is_empty()
+        {
+            return false;
         }
 
         // Check contains condition
-        if let Some(ref needle) = self.contains {
-            if !value.contains(needle) {
-                return false;
-            }
+        if let Some(ref needle) = self.contains
+            && !value.contains(needle)
+        {
+            return false;
         }
 
         // Check regex match condition
@@ -87,15 +87,15 @@ impl ColorRule {
         // Check numeric conditions (extract number from value)
         if self.above.is_some() || self.below.is_some() {
             if let Some(num) = extract_number(value) {
-                if let Some(above) = self.above {
-                    if num <= above {
-                        return false;
-                    }
+                if let Some(above) = self.above
+                    && num <= above
+                {
+                    return false;
                 }
-                if let Some(below) = self.below {
-                    if num >= below {
-                        return false;
-                    }
+                if let Some(below) = self.below
+                    && num >= below
+                {
+                    return false;
                 }
             } else {
                 // No number found, numeric conditions fail
@@ -386,11 +386,7 @@ impl Theme {
                             continue;
                         } else {
                             // Plugin disabled, remove the placeholder
-                            result = format!(
-                                "{}{}",
-                                &result[..open_idx],
-                                &result[close_idx + 1..]
-                            );
+                            result = format!("{}{}", &result[..open_idx], &result[close_idx + 1..]);
                             continue;
                         }
                     }
@@ -425,7 +421,10 @@ impl Theme {
     fn load_with_depth(name: &str, depth: usize) -> Result<Self> {
         const MAX_INHERITANCE_DEPTH: usize = 10;
         if depth > MAX_INHERITANCE_DEPTH {
-            anyhow::bail!("Theme inheritance too deep (max {}). Check for circular inheritance.", MAX_INHERITANCE_DEPTH);
+            anyhow::bail!(
+                "Theme inheritance too deep (max {}). Check for circular inheritance.",
+                MAX_INHERITANCE_DEPTH
+            );
         }
 
         let theme_path = if name.contains('/') {
@@ -476,10 +475,13 @@ impl Theme {
         if self.prompt.format.is_empty() {
             self.prompt.format = parent.prompt.format;
         }
-        if self.prompt.char == default_prompt_char() && parent.prompt.char != default_prompt_char() {
+        if self.prompt.char == default_prompt_char() && parent.prompt.char != default_prompt_char()
+        {
             self.prompt.char = parent.prompt.char;
         }
-        if self.prompt.char_error == default_prompt_char() && parent.prompt.char_error != default_prompt_char() {
+        if self.prompt.char_error == default_prompt_char()
+            && parent.prompt.char_error != default_prompt_char()
+        {
             self.prompt.char_error = parent.prompt.char_error;
         }
 
@@ -528,10 +530,7 @@ impl Theme {
 
     /// Check if a plugin is enabled in this theme.
     pub fn is_plugin_enabled(&self, name: &str) -> bool {
-        self.plugins
-            .get(name)
-            .map(|p| p.enabled)
-            .unwrap_or(true) // Enabled by default
+        self.plugins.get(name).map(|p| p.enabled).unwrap_or(true) // Enabled by default
     }
 
     /// Format the prompt string using plugin variables and built-in variables.
@@ -614,10 +613,10 @@ impl Theme {
             .ok()
             .and_then(|p| {
                 // Check if it's the home directory
-                if let Some(home) = dirs::home_dir() {
-                    if p == home {
-                        return Some("~".to_string());
-                    }
+                if let Some(home) = dirs::home_dir()
+                    && p == home
+                {
+                    return Some("~".to_string());
                 }
                 p.file_name().map(|s| s.to_string_lossy().to_string())
             })
@@ -645,9 +644,7 @@ impl Theme {
 
                         // Only expand if plugin is enabled
                         if self.is_plugin_enabled(plugin_name) {
-                            let value = plugin_manager
-                                .get_variable(var)
-                                .unwrap_or_default();
+                            let value = plugin_manager.get_variable(var).unwrap_or_default();
 
                             result = format!(
                                 "{}{}{}",
@@ -659,11 +656,7 @@ impl Theme {
                             continue;
                         } else {
                             // Plugin disabled, remove the placeholder
-                            result = format!(
-                                "{}{}",
-                                &result[..open_idx],
-                                &result[close_idx + 1..]
-                            );
+                            result = format!("{}{}", &result[..open_idx], &result[close_idx + 1..]);
                             continue;
                         }
                     }
@@ -734,4 +727,3 @@ impl Theme {
         result
     }
 }
-

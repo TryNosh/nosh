@@ -78,16 +78,16 @@ impl PermissionStore {
     pub fn is_command_allowed(&self, command: &str, command_pattern: &str) -> bool {
         // Check if the exact pattern is allowed (e.g., "git log")
         if self.allowed_commands.contains(command_pattern)
-            || self.session_commands.contains(command_pattern) {
+            || self.session_commands.contains(command_pattern)
+        {
             return true;
         }
 
         // Check if the base command is allowed (e.g., "git" allows all git subcommands)
-        if command != command_pattern {
-            if self.allowed_commands.contains(command)
-                || self.session_commands.contains(command) {
-                return true;
-            }
+        if command != command_pattern
+            && (self.allowed_commands.contains(command) || self.session_commands.contains(command))
+        {
+            return true;
         }
 
         false
@@ -104,7 +104,11 @@ impl PermissionStore {
         // Check if this directory or any parent is allowed
         let dir_path = PathBuf::from(directory);
 
-        for allowed in self.allowed_directories.iter().chain(self.session_directories.iter()) {
+        for allowed in self
+            .allowed_directories
+            .iter()
+            .chain(self.session_directories.iter())
+        {
             let allowed_path = PathBuf::from(allowed);
             if dir_path.starts_with(&allowed_path) {
                 return true;
@@ -135,7 +139,7 @@ impl PermissionStore {
         // Extract directory from path (for files, get parent; for globs, get base)
         let check_path = if path.contains('*') || path.contains('?') {
             // For globs, extract the non-glob prefix as the directory to check
-            let glob_start = path.find(|c| c == '*' || c == '?' || c == '[').unwrap_or(path.len());
+            let glob_start = path.find(['*', '?', '[']).unwrap_or(path.len());
             let base = &path[..glob_start].trim_end_matches('/');
             if base.is_empty() {
                 PathBuf::from("/")
@@ -147,7 +151,10 @@ impl PermissionStore {
         };
 
         // Check both persisted and session command+directory permissions
-        for store in [&self.allowed_command_directories, &self.session_command_directories] {
+        for store in [
+            &self.allowed_command_directories,
+            &self.session_command_directories,
+        ] {
             // Check exact pattern (e.g., "git log")
             if let Some(dirs) = store.get(command_pattern) {
                 for allowed_dir in dirs {
@@ -159,13 +166,13 @@ impl PermissionStore {
             }
 
             // Check base command (e.g., "git" allows all git subcommands in that dir)
-            if command != command_pattern {
-                if let Some(dirs) = store.get(command) {
-                    for allowed_dir in dirs {
-                        let allowed_path = PathBuf::from(allowed_dir);
-                        if check_path.starts_with(&allowed_path) {
-                            return true;
-                        }
+            if command != command_pattern
+                && let Some(dirs) = store.get(command)
+            {
+                for allowed_dir in dirs {
+                    let allowed_path = PathBuf::from(allowed_dir);
+                    if check_path.starts_with(&allowed_path) {
+                        return true;
                     }
                 }
             }
@@ -190,9 +197,9 @@ impl PermissionStore {
         }
 
         // ALL paths must be allowed
-        affected_paths.iter().all(|path| {
-            self.is_path_allowed_for_command(command, command_pattern, path)
-        })
+        affected_paths
+            .iter()
+            .all(|path| self.is_path_allowed_for_command(command, command_pattern, path))
     }
 
     /// Allow a command or command pattern.

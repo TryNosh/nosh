@@ -104,11 +104,7 @@ pub fn set_title_to_command(command: &str) {
     }
 
     // Extract just the command name (first word), trimmed
-    let cmd_name = command
-        .split_whitespace()
-        .next()
-        .unwrap_or(command)
-        .trim();
+    let cmd_name = command.split_whitespace().next().unwrap_or(command).trim();
 
     // Trim if too long
     let title = if cmd_name.len() > 30 {

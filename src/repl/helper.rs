@@ -2,7 +2,7 @@
 
 use std::borrow::Cow;
 use std::collections::HashSet;
-use std::sync::Arc;
+use std::rc::Rc;
 
 use rustyline::completion::Completer;
 use rustyline::highlight::{CmdKind, Highlighter};
@@ -15,24 +15,72 @@ use crate::completions::{Completion, CompletionManager};
 
 /// Shell builtins recognized as valid commands.
 const SHELL_BUILTINS: &[&str] = &[
-    "cd", "echo", "exit", "export", "source", "alias", "unalias", "set", "unset",
-    "eval", "exec", "read", "test", "true", "false", "pwd", "type", "hash",
-    "umask", "wait", "trap", "return", "shift", "break", "continue", "builtin",
-    "command", "declare", "local", "readonly", "typeset", "let", "bg", "fg", "jobs",
-    "kill", "suspend", "logout", "history", "help", "pushd", "popd", "dirs",
-    "shopt", "printf", "getopts", "ulimit", "times", "bind", "complete", "compgen",
-    "caller", "enable", "mapfile", "readarray",
+    "cd",
+    "echo",
+    "exit",
+    "export",
+    "source",
+    "alias",
+    "unalias",
+    "set",
+    "unset",
+    "eval",
+    "exec",
+    "read",
+    "test",
+    "true",
+    "false",
+    "pwd",
+    "type",
+    "hash",
+    "umask",
+    "wait",
+    "trap",
+    "return",
+    "shift",
+    "break",
+    "continue",
+    "builtin",
+    "command",
+    "declare",
+    "local",
+    "readonly",
+    "typeset",
+    "let",
+    "bg",
+    "fg",
+    "jobs",
+    "kill",
+    "suspend",
+    "logout",
+    "history",
+    "help",
+    "pushd",
+    "popd",
+    "dirs",
+    "shopt",
+    "printf",
+    "getopts",
+    "ulimit",
+    "times",
+    "bind",
+    "complete",
+    "compgen",
+    "caller",
+    "enable",
+    "mapfile",
+    "readarray",
 ];
 
 /// Rustyline helper providing completions, hints, and highlighting.
 pub struct NoshHelper {
-    completion_manager: Arc<CompletionManager>,
+    completion_manager: Rc<CompletionManager>,
     syntax_highlighting: bool,
     command_cache: HashSet<String>,
 }
 
 impl NoshHelper {
-    pub fn new(completion_manager: Arc<CompletionManager>, syntax_highlighting: bool) -> Self {
+    pub fn new(completion_manager: Rc<CompletionManager>, syntax_highlighting: bool) -> Self {
         let command_cache = if syntax_highlighting {
             build_command_cache()
         } else {
@@ -120,10 +168,7 @@ impl Completer for NoshHelper {
         let completions = self.completion_manager.complete(line, pos);
         let start = find_word_start(line, pos);
 
-        let candidates = completions
-            .into_iter()
-            .map(NoshCandidate::new)
-            .collect();
+        let candidates = completions.into_iter().map(NoshCandidate::new).collect();
 
         Ok((start, candidates))
     }
@@ -175,7 +220,7 @@ impl NoshHelper {
 
 /// Find word start for natural language (simple space-based).
 fn find_word_start_simple(line: &str, pos: usize) -> usize {
-    let bytes = line[..pos].as_bytes();
+    let bytes = &line.as_bytes()[..pos];
     let mut start = pos;
 
     while start > 0 && bytes[start - 1] != b' ' && bytes[start - 1] != b'\t' {
@@ -239,15 +284,13 @@ impl Hinter for NoshHelper {
 impl Highlighter for NoshHelper {
     fn highlight<'l>(&self, line: &'l str, _pos: usize) -> Cow<'l, str> {
         // Style ?? and ? with elegant formatting (preserve length for cursor)
-        if line.starts_with("??") {
-            let rest = &line[2..];
+        if let Some(rest) = line.strip_prefix("??") {
             // Bold purple "??" with glow effect
             Cow::Owned(format!(
                 "\x1b[1m\x1b[38;5;135m??\x1b[0m\x1b[38;5;250m{}\x1b[0m",
                 rest
             ))
-        } else if line.starts_with('?') {
-            let rest = &line[1..];
+        } else if let Some(rest) = line.strip_prefix('?') {
             // Bold cyan "?" with glow effect
             Cow::Owned(format!(
                 "\x1b[1m\x1b[38;5;45m?\x1b[0m\x1b[38;5;250m{}\x1b[0m",
@@ -427,11 +470,11 @@ impl NoshHelper {
             if c == b'|' || c == b'>' || c == b'<' || c == b';' || c == b'&' {
                 let start = i;
                 // Handle multi-char operators
-                if c == b'|' && i + 1 < len && bytes[i + 1] == b'|' {
-                    i += 2;
-                } else if c == b'&' && i + 1 < len && bytes[i + 1] == b'&' {
-                    i += 2;
-                } else if c == b'>' && i + 1 < len && bytes[i + 1] == b'>' {
+                if i + 1 < len
+                    && ((c == b'|' && bytes[i + 1] == b'|')
+                        || (c == b'&' && bytes[i + 1] == b'&')
+                        || (c == b'>' && bytes[i + 1] == b'>'))
+                {
                     i += 2;
                 } else {
                     i += 1;

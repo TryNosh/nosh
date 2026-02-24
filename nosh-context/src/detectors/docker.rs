@@ -9,7 +9,8 @@ use crate::context::ToolInfo;
 /// Detect Docker toolchain information.
 pub fn detect(_dir: &Path, files: &HashSet<String>) -> Option<ToolInfo> {
     // Check for Docker project indicators
-    let has_dockerfile = files.contains("Dockerfile") || files.iter().any(|f| f.starts_with("Dockerfile."));
+    let has_dockerfile =
+        files.contains("Dockerfile") || files.iter().any(|f| f.starts_with("Dockerfile."));
     let has_compose = files.contains("docker-compose.yml")
         || files.contains("docker-compose.yaml")
         || files.contains("compose.yml")
@@ -28,10 +29,7 @@ pub fn detect(_dir: &Path, files: &HashSet<String>) -> Option<ToolInfo> {
 
 /// Get Docker version string.
 fn get_docker_version() -> Option<String> {
-    let output = Command::new("docker")
-        .args(["--version"])
-        .output()
-        .ok()?;
+    let output = Command::new("docker").args(["--version"]).output().ok()?;
 
     if !output.status.success() {
         return None;

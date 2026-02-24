@@ -20,12 +20,7 @@ pub fn format_step(iteration: usize, command: &str, reasoning: Option<&str>) -> 
     );
 
     if let Some(reason) = reasoning {
-        result.push_str(&format!(
-            "\n    {}{}{}",
-            colors::DIM,
-            reason,
-            colors::RESET
-        ));
+        result.push_str(&format!("\n    {}{}{}", colors::DIM, reason, colors::RESET));
     }
 
     result
@@ -38,12 +33,7 @@ pub fn format_output(output: &str) -> String {
 
 /// Format a translated command for simple query mode
 pub fn format_translated_command(command: &str) -> String {
-    format!(
-        "{}⚡{} {}",
-        colors::CYAN,
-        colors::RESET,
-        command
-    )
+    format!("{}⚡{} {}", colors::CYAN, colors::RESET, command)
 }
 
 /// Format a simple header with separator
@@ -61,7 +51,7 @@ pub fn format_header(title: &str, subtitle: &str) -> String {
 
 /// Format a result message with markdown rendering
 pub fn format_result(message: &str) -> String {
-    use termimad::crossterm::style::{Color, Attribute};
+    use termimad::crossterm::style::{Attribute, Color};
 
     let mut skin = MadSkin::default();
 
@@ -80,10 +70,5 @@ pub fn format_result(message: &str) -> String {
 
 /// Format an error message
 pub fn format_error(message: &str) -> String {
-    format!(
-        "{}error:{} {}",
-        colors::RED,
-        colors::RESET,
-        message
-    )
+    format!("{}error:{} {}", colors::RED, colors::RESET, message)
 }

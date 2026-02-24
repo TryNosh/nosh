@@ -3,21 +3,47 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RiskLevel {
-    Safe,       // echo, pwd, ls (no writes)
-    Low,        // single file write, git operations
-    Medium,     // glob deletes, recursive operations
-    High,       // sudo, system modifications
-    Critical,   // rm -rf ~, rm -rf /, curl | sh
-    Blocked,    // absolutely never allow
+    Safe,     // echo, pwd, ls (no writes)
+    Low,      // single file write, git operations
+    Medium,   // glob deletes, recursive operations
+    High,     // sudo, system modifications
+    Critical, // rm -rf ~, rm -rf /, curl | sh
+    Blocked,  // absolutely never allow
 }
 
 /// Commands that have subcommands (e.g., "git log", "docker run")
 const COMMANDS_WITH_SUBCOMMANDS: &[&str] = &[
-    "git", "docker", "cargo", "npm", "npx", "yarn", "pnpm",
-    "kubectl", "brew", "apt", "apt-get", "dnf", "yum", "pacman",
-    "systemctl", "journalctl", "ip", "az", "aws", "gcloud",
-    "terraform", "helm", "podman", "minikube", "kind",
-    "go", "rustup", "pip", "poetry", "uv", "conda",
+    "git",
+    "docker",
+    "cargo",
+    "npm",
+    "npx",
+    "yarn",
+    "pnpm",
+    "kubectl",
+    "brew",
+    "apt",
+    "apt-get",
+    "dnf",
+    "yum",
+    "pacman",
+    "systemctl",
+    "journalctl",
+    "ip",
+    "az",
+    "aws",
+    "gcloud",
+    "terraform",
+    "helm",
+    "podman",
+    "minikube",
+    "kind",
+    "go",
+    "rustup",
+    "pip",
+    "poetry",
+    "uv",
+    "conda",
 ];
 
 #[derive(Debug, Clone)]
@@ -48,9 +74,9 @@ const DESTRUCTIVE_COMMANDS: &[&str] = &["rm", "rmdir", "mv", "unlink"];
 const NETWORK_COMMANDS: &[&str] = &["curl", "wget", "ssh", "scp", "rsync", "nc", "netcat"];
 const PRIVILEGED_COMMANDS: &[&str] = &["sudo", "su", "doas"];
 const SAFE_COMMANDS: &[&str] = &[
-    "echo", "pwd", "ls", "cat", "head", "tail", "grep", "find", "which", "whereis",
-    "whoami", "date", "cal", "uptime", "hostname", "uname", "env", "printenv",
-    "wc", "sort", "uniq", "diff", "less", "more", "file", "stat", "tree",
+    "echo", "pwd", "ls", "cat", "head", "tail", "grep", "find", "which", "whereis", "whoami",
+    "date", "cal", "uptime", "hostname", "uname", "env", "printenv", "wc", "sort", "uniq", "diff",
+    "less", "more", "file", "stat", "tree",
 ];
 
 /// Resolve a path argument to an absolute path.
@@ -99,7 +125,9 @@ fn resolve_path(path: &str) -> String {
             } else if let Ok(resolved) = p.canonicalize() {
                 resolved.to_string_lossy().to_string()
             } else if let Ok(cwd) = env::current_dir() {
-                normalize_path(&cwd.join(path)).to_string_lossy().to_string()
+                normalize_path(&cwd.join(path))
+                    .to_string_lossy()
+                    .to_string()
             } else {
                 path.to_string()
             }
@@ -197,7 +225,10 @@ fn extract_subcommand(command: &str, args: &[String]) -> (Option<String>, String
 fn assess_risk(command: &str, args: &[String], info: &CommandInfo) -> (RiskLevel, String) {
     // Check for blocked patterns
     if is_blocked(command, args) {
-        return (RiskLevel::Blocked, "This command is blocked for safety".to_string());
+        return (
+            RiskLevel::Blocked,
+            "This command is blocked for safety".to_string(),
+        );
     }
 
     // Check for critical patterns
@@ -207,12 +238,18 @@ fn assess_risk(command: &str, args: &[String], info: &CommandInfo) -> (RiskLevel
 
     // Privileged commands
     if info.is_privileged {
-        return (RiskLevel::High, format!("Requires elevated privileges ({})", command));
+        return (
+            RiskLevel::High,
+            format!("Requires elevated privileges ({})", command),
+        );
     }
 
     // Network commands
     if info.is_network {
-        return (RiskLevel::Medium, format!("Network operation ({})", command));
+        return (
+            RiskLevel::Medium,
+            format!("Network operation ({})", command),
+        );
     }
 
     // Destructive commands
@@ -241,7 +278,9 @@ fn assess_risk(command: &str, args: &[String], info: &CommandInfo) -> (RiskLevel
 fn is_blocked(command: &str, args: &[String]) -> bool {
     // rm -rf / or rm -rf /*
     if command == "rm" {
-        let has_rf = args.iter().any(|a| a.starts_with('-') && a.contains('r') && a.contains('f'));
+        let has_rf = args
+            .iter()
+            .any(|a| a.starts_with('-') && a.contains('r') && a.contains('f'));
         let targets_root = args.iter().any(|a| a == "/" || a == "/*");
         if has_rf && targets_root {
             return true;
@@ -253,7 +292,9 @@ fn is_blocked(command: &str, args: &[String]) -> bool {
 fn is_critical(command: &str, args: &[String]) -> Option<String> {
     // rm -rf on home or other dangerous paths
     if command == "rm" {
-        let has_rf = args.iter().any(|a| a.starts_with('-') && a.contains('r') && a.contains('f'));
+        let has_rf = args
+            .iter()
+            .any(|a| a.starts_with('-') && a.contains('r') && a.contains('f'));
         if has_rf {
             for arg in args {
                 if arg == "~" || arg == "$HOME" || arg.starts_with("~/") && arg.len() <= 3 {

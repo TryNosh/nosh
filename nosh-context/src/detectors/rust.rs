@@ -29,10 +29,7 @@ fn get_rustc_version() -> Option<String> {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     // Parse "rustc 1.75.0 (82e1608df 2023-12-21)" -> "1.75.0"
-    let version = stdout
-        .split_whitespace()
-        .nth(1)
-        .map(|s| s.to_string())?;
+    let version = stdout.split_whitespace().nth(1).map(|s| s.to_string())?;
 
     Some(version)
 }

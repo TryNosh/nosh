@@ -13,12 +13,14 @@ mod safety;
 mod ui;
 
 use ai::{
-    AgenticConfig, AgenticSession, AgenticStep, CloudClient, CommandPermission,
-    ConversationContext,
+    AgenticConfig, AgenticSession, AgenticStep, CloudClient, CommandPermission, ConversationContext,
 };
-use ui::{format_step, format_output, format_translated_command, format_header, format_result, format_error};
+use dialoguer::{Input, Select, theme::ColorfulTheme};
 use plugins::builtins::{install_builtins, upgrade_builtins};
-use dialoguer::{theme::ColorfulTheme, Input, Select};
+use ui::{
+    format_error, format_header, format_output, format_result, format_step,
+    format_translated_command,
+};
 
 fn format_tokens(tokens: i32) -> String {
     if tokens >= 1_000_000 {
@@ -38,9 +40,18 @@ fn format_date(iso: &str) -> String {
         let parts: Vec<&str> = date_part.split('-').collect();
         if parts.len() == 3 {
             let month = match parts[1] {
-                "01" => "Jan", "02" => "Feb", "03" => "Mar", "04" => "Apr",
-                "05" => "May", "06" => "Jun", "07" => "Jul", "08" => "Aug",
-                "09" => "Sep", "10" => "Oct", "11" => "Nov", "12" => "Dec",
+                "01" => "Jan",
+                "02" => "Feb",
+                "03" => "Mar",
+                "04" => "Apr",
+                "05" => "May",
+                "06" => "Jun",
+                "07" => "Jul",
+                "08" => "Aug",
+                "09" => "Sep",
+                "10" => "Oct",
+                "11" => "Nov",
+                "12" => "Dec",
                 _ => parts[1],
             };
             let day = parts[2].trim_start_matches('0');
@@ -54,7 +65,10 @@ async fn show_buy_menu(client: &CloudClient) {
     // Get current plan to show appropriate options
     let plan_info = client.get_plan().await.ok();
     let current_plan = plan_info.as_ref().and_then(|p| p.plan.as_deref());
-    let is_canceling = plan_info.as_ref().map(|p| p.cancel_at_period_end).unwrap_or(false);
+    let is_canceling = plan_info
+        .as_ref()
+        .map(|p| p.cancel_at_period_end)
+        .unwrap_or(false);
 
     // Build options based on current plan
     let mut options: Vec<String> = Vec::new();
@@ -146,9 +160,9 @@ use auth::Credentials;
 use config::Config;
 use exec::ShellSession;
 use indicatif::{ProgressBar, ProgressStyle};
-use onboarding::{needs_onboarding, run_onboarding, OnboardingChoice};
-use repl::{Repl, ReadlineResult};
-use safety::{parse_command, prompt_for_permission, PermissionChoice, PermissionStore, RiskLevel};
+use onboarding::{OnboardingChoice, needs_onboarding, run_onboarding};
+use repl::{ReadlineResult, Repl};
+use safety::{PermissionChoice, PermissionStore, RiskLevel, parse_command, prompt_for_permission};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -243,7 +257,11 @@ async fn main() -> Result<()> {
     }
 
     // Initialize REPL with theme from config
-    let mut repl = Repl::new(&config.prompt.theme, Some(config.history.load_count), config.prompt.syntax_highlighting)?;
+    let mut repl = Repl::new(
+        &config.prompt.theme,
+        Some(config.history.load_count),
+        config.prompt.syntax_highlighting,
+    )?;
     repl.load_history();
 
     // Create persistent shell session (brush-based bash interpreter)
@@ -350,7 +368,15 @@ async fn main() -> Result<()> {
                     println!("  (none)");
                 } else {
                     for (name, desc, vars) in plugins {
-                        println!("  {} - {}", name, if desc.is_empty() { "(no description)" } else { desc });
+                        println!(
+                            "  {} - {}",
+                            name,
+                            if desc.is_empty() {
+                                "(no description)"
+                            } else {
+                                desc
+                            }
+                        );
                         for var in vars {
                             println!("    :{}", var);
                         }
@@ -415,7 +441,13 @@ async fn main() -> Result<()> {
                     || cwd.join("completions").exists();
 
                 let options = if is_nosh_package {
-                    vec!["New theme", "New plugin", "New completion", "Link to nosh", "Cancel"]
+                    vec![
+                        "New theme",
+                        "New plugin",
+                        "New completion",
+                        "Link to nosh",
+                        "Cancel",
+                    ]
                 } else {
                     vec!["New project", "Link to nosh", "Cancel"]
                 };
@@ -443,18 +475,19 @@ async fn main() -> Result<()> {
                             }
                             Ok(Some(1)) => {
                                 // New directory
-                                let name: Result<String, _> = Input::with_theme(&ColorfulTheme::default())
-                                    .with_prompt("Project name")
-                                    .validate_with(|input: &String| {
-                                        if input.trim().is_empty() {
-                                            Err("Name cannot be empty")
-                                        } else if input.contains('/') || input.contains('\\') {
-                                            Err("Name cannot contain path separators")
-                                        } else {
-                                            Ok(())
-                                        }
-                                    })
-                                    .interact_text();
+                                let name: Result<String, _> =
+                                    Input::with_theme(&ColorfulTheme::default())
+                                        .with_prompt("Project name")
+                                        .validate_with(|input: &String| {
+                                            if input.trim().is_empty() {
+                                                Err("Name cannot be empty")
+                                            } else if input.contains('/') || input.contains('\\') {
+                                                Err("Name cannot contain path separators")
+                                            } else {
+                                                Ok(())
+                                            }
+                                        })
+                                        .interact_text();
 
                                 match name {
                                     Ok(n) => cwd.join(n.trim()),
@@ -540,7 +573,8 @@ Or install from GitHub:
                                 continue;
                             }
 
-                            let template = format!(r##"# Theme: {}
+                            let template = format!(
+                                r##"# Theme: {}
 # Documentation: https://nosh.sh/docs/themes
 
 [prompt]
@@ -559,7 +593,9 @@ path = "#5f87af"
 git_clean = "#87af87"
 git_dirty = "#d7af5f"
 error = "#d75f5f"
-"##, name);
+"##,
+                                name
+                            );
 
                             match std::fs::write(&theme_path, &template) {
                                 Ok(_) => {
@@ -590,7 +626,8 @@ error = "#d75f5f"
                                 continue;
                             }
 
-                            let template = format!(r#"# Plugin: {}
+                            let template = format!(
+                                r#"# Plugin: {}
 # Documentation: https://nosh.sh/docs/plugins
 
 [plugin]
@@ -612,7 +649,9 @@ description = "My custom plugin"
 [config]
 # Custom config values
 # min_ms = 500
-"#, name, name);
+"#,
+                                name, name
+                            );
 
                             match std::fs::write(&plugin_path, &template) {
                                 Ok(_) => {
@@ -636,14 +675,16 @@ description = "My custom plugin"
 
                         if let Ok(name) = name {
                             let name = name.trim();
-                            let completion_path = cwd.join("completions").join(format!("{}.toml", name));
+                            let completion_path =
+                                cwd.join("completions").join(format!("{}.toml", name));
 
                             if completion_path.exists() {
                                 eprintln!("Completion '{}' already exists", name);
                                 continue;
                             }
 
-                            let template = format!(r#"# Completions for: {}
+                            let template = format!(
+                                r#"# Completions for: {}
 # Documentation: https://nosh.sh/docs/completions
 
 [completions.{}]
@@ -661,7 +702,9 @@ description = "Show help"
 [[completions.{}.options]]
 name = "--version"
 description = "Show version"
-"#, name, name, name, name, name, name);
+"#,
+                                name, name, name, name, name, name
+                            );
 
                             match std::fs::write(&completion_path, &template) {
                                 Ok(_) => {
@@ -673,7 +716,8 @@ description = "Show version"
                     }
                     Ok(Some(idx)) if options[idx] == "Link to nosh" => {
                         // Get package name from directory name
-                        let pkg_name = cwd.file_name()
+                        let pkg_name = cwd
+                            .file_name()
                             .and_then(|n| n.to_str())
                             .unwrap_or("package");
 
@@ -706,40 +750,46 @@ description = "Show version"
                                 let themes_dir = cwd.join("themes");
                                 let plugins_dir = cwd.join("plugins");
 
-                                if themes_dir.exists() {
-                                    if let Ok(entries) = std::fs::read_dir(&themes_dir) {
-                                        let themes: Vec<_> = entries
-                                            .filter_map(|e| e.ok())
-                                            .filter(|e| e.path().extension().map_or(false, |ext| ext == "toml"))
-                                            .collect();
-                                        if !themes.is_empty() {
-                                            println!("\nThemes:");
-                                            for entry in themes {
-                                                let path = entry.path();
-                                                let name = path.file_stem()
-                                                    .and_then(|n| n.to_str())
-                                                    .unwrap_or("?");
-                                                println!("  theme = \"{}/{}\"", pkg_name, name);
-                                            }
+                                if themes_dir.exists()
+                                    && let Ok(entries) = std::fs::read_dir(&themes_dir)
+                                {
+                                    let themes: Vec<_> = entries
+                                        .filter_map(|e| e.ok())
+                                        .filter(|e| {
+                                            e.path().extension().is_some_and(|ext| ext == "toml")
+                                        })
+                                        .collect();
+                                    if !themes.is_empty() {
+                                        println!("\nThemes:");
+                                        for entry in themes {
+                                            let path = entry.path();
+                                            let name = path
+                                                .file_stem()
+                                                .and_then(|n| n.to_str())
+                                                .unwrap_or("?");
+                                            println!("  theme = \"{}/{}\"", pkg_name, name);
                                         }
                                     }
                                 }
 
-                                if plugins_dir.exists() {
-                                    if let Ok(entries) = std::fs::read_dir(&plugins_dir) {
-                                        let plugins: Vec<_> = entries
-                                            .filter_map(|e| e.ok())
-                                            .filter(|e| e.path().extension().map_or(false, |ext| ext == "toml"))
-                                            .collect();
-                                        if !plugins.is_empty() {
-                                            println!("\nPlugins:");
-                                            for entry in plugins {
-                                                let path = entry.path();
-                                                let name = path.file_stem()
-                                                    .and_then(|n| n.to_str())
-                                                    .unwrap_or("?");
-                                                println!("  {{{}/{}:variable}}", pkg_name, name);
-                                            }
+                                if plugins_dir.exists()
+                                    && let Ok(entries) = std::fs::read_dir(&plugins_dir)
+                                {
+                                    let plugins: Vec<_> = entries
+                                        .filter_map(|e| e.ok())
+                                        .filter(|e| {
+                                            e.path().extension().is_some_and(|ext| ext == "toml")
+                                        })
+                                        .collect();
+                                    if !plugins.is_empty() {
+                                        println!("\nPlugins:");
+                                        for entry in plugins {
+                                            let path = entry.path();
+                                            let name = path
+                                                .file_stem()
+                                                .and_then(|n| n.to_str())
+                                                .unwrap_or("?");
+                                            println!("  {{{}/{}:variable}}", pkg_name, name);
                                         }
                                     }
                                 }
@@ -796,14 +846,19 @@ description = "Show version"
 
                         // Show token balances
                         if usage.monthly_allowance > 0 {
-                            println!("│  Subscription: {} / {}",
+                            println!(
+                                "│  Subscription: {} / {}",
                                 format_tokens(usage.subscription_balance),
-                                format_tokens(usage.monthly_allowance));
+                                format_tokens(usage.monthly_allowance)
+                            );
                             if let Some(resets_at) = &usage.resets_at {
                                 println!("│  Renews:       {}", format_date(resets_at));
                             }
                         }
-                        println!("│  Pack tokens:  {} (never expire)", format_tokens(usage.pack_balance));
+                        println!(
+                            "│  Pack tokens:  {} (never expire)",
+                            format_tokens(usage.pack_balance)
+                        );
                         println!("│");
                         println!("│  Total:        {}", format_tokens(usage.total_balance));
                         println!("│  Used:         {}", format_tokens(usage.tokens_used));
@@ -811,8 +866,14 @@ description = "Show version"
                         println!("└────────────────────────────────────┘\n");
 
                         // Show options based on subscription state
-                        let has_subscription = plan_info.as_ref().map(|p| p.plan.is_some()).unwrap_or(false);
-                        let is_canceling = plan_info.as_ref().map(|p| p.cancel_at_period_end).unwrap_or(false);
+                        let has_subscription = plan_info
+                            .as_ref()
+                            .map(|p| p.plan.is_some())
+                            .unwrap_or(false);
+                        let is_canceling = plan_info
+                            .as_ref()
+                            .map(|p| p.cancel_at_period_end)
+                            .unwrap_or(false);
 
                         if has_subscription {
                             let options = if is_canceling {
@@ -863,7 +924,9 @@ description = "Show version"
                                 Ok(Some(3)) if !is_canceling => {
                                     // Cancel subscription
                                     println!("\nAre you sure you want to cancel?");
-                                    println!("You'll keep access until the end of your billing period.\n");
+                                    println!(
+                                        "You'll keep access until the end of your billing period.\n"
+                                    );
 
                                     let confirm = Select::with_theme(&ColorfulTheme::default())
                                         .items(&["No, keep my subscription", "Yes, cancel"])
@@ -872,7 +935,9 @@ description = "Show version"
 
                                     if let Ok(Some(1)) = confirm {
                                         match client.cancel_subscription().await {
-                                            Ok(_) => println!("\nSubscription canceled. You'll have access until the end of the billing period."),
+                                            Ok(_) => println!(
+                                                "\nSubscription canceled. You'll have access until the end of the billing period."
+                                            ),
                                             Err(e) => eprintln!("Error: {}", e),
                                         }
                                     }
@@ -901,11 +966,7 @@ description = "Show version"
                 continue;
             }
             ReadlineResult::Line(line) if line == "/config" => {
-                let options = vec![
-                    "Open config directory",
-                    "Edit config file",
-                    "Back",
-                ];
+                let options = vec!["Open config directory", "Edit config file", "Back"];
 
                 let selection = Select::with_theme(&ColorfulTheme::default())
                     .with_prompt("Configuration")
@@ -919,9 +980,7 @@ description = "Show version"
                         let config_dir = paths::nosh_config_dir();
                         let editor = std::env::var("EDITOR").unwrap_or_else(|_| "open".to_string());
                         println!("Opening {}...", config_dir.display());
-                        if let Err(e) = std::process::Command::new(&editor)
-                            .arg(&config_dir)
-                            .spawn()
+                        if let Err(e) = std::process::Command::new(&editor).arg(&config_dir).spawn()
                         {
                             eprintln!("Could not open directory: {}", e);
                             println!("Config directory: {}", config_dir.display());
@@ -930,9 +989,12 @@ description = "Show version"
                     Ok(Some(1)) => {
                         // Edit specific config file
                         let builtins_dir = paths::packages_dir().join("builtins");
-                        let files = vec![
+                        let files = [
                             ("Config (config.toml)", paths::config_file()),
-                            ("Theme (builtins/default.toml)", builtins_dir.join("themes").join("default.toml")),
+                            (
+                                "Theme (builtins/default.toml)",
+                                builtins_dir.join("themes").join("default.toml"),
+                            ),
                             ("Init script (init.sh)", paths::init_file()),
                             ("Permissions", paths::permissions_file()),
                         ];
@@ -947,12 +1009,10 @@ description = "Show version"
 
                         if let Ok(Some(idx)) = file_selection {
                             let (_, path) = &files[idx];
-                            let editor = std::env::var("EDITOR").unwrap_or_else(|_| "nano".to_string());
+                            let editor =
+                                std::env::var("EDITOR").unwrap_or_else(|_| "nano".to_string());
                             println!("Opening {} with {}...", path.display(), editor);
-                            if let Err(e) = std::process::Command::new(&editor)
-                                .arg(path)
-                                .status()
-                            {
+                            if let Err(e) = std::process::Command::new(&editor).arg(path).status() {
                                 eprintln!("Could not open editor: {}", e);
                             }
                         }
@@ -1010,8 +1070,12 @@ description = "Show version"
                 let current = env!("CARGO_PKG_VERSION");
                 let latest = (|| -> Result<String, Box<dyn std::error::Error>> {
                     let output = std::process::Command::new("curl")
-                        .args(["-fsSL", "-H", "Accept: application/vnd.github.v3+json",
-                               "https://api.github.com/repos/TryNosh/nosh/releases/latest"])
+                        .args([
+                            "-fsSL",
+                            "-H",
+                            "Accept: application/vnd.github.v3+json",
+                            "https://api.github.com/repos/TryNosh/nosh/releases/latest",
+                        ])
                         .output()?;
                     if !output.status.success() {
                         return Err("Failed to fetch version info".into());
@@ -1046,7 +1110,8 @@ description = "Show version"
                             match status {
                                 Ok(s) if s.success() => {
                                     println!("\nRestarting nosh...\n");
-                                    let exe = std::env::current_exe().unwrap_or_else(|_| "nosh".into());
+                                    let exe =
+                                        std::env::current_exe().unwrap_or_else(|_| "nosh".into());
                                     let args: Vec<String> = std::env::args().collect();
                                     let err = std::os::unix::process::CommandExt::exec(
                                         std::process::Command::new(&exe).args(&args[1..]),
@@ -1054,7 +1119,9 @@ description = "Show version"
                                     eprintln!("Failed to restart: {err}");
                                 }
                                 _ => {
-                                    eprintln!("Installation failed. Try manually: curl -fsSL https://raw.githubusercontent.com/TryNosh/nosh/main/install.sh | sh");
+                                    eprintln!(
+                                        "Installation failed. Try manually: curl -fsSL https://raw.githubusercontent.com/TryNosh/nosh/main/install.sh | sh"
+                                    );
                                 }
                             }
                         } else {
@@ -1157,26 +1224,26 @@ description = "Show version"
                     .default(0)
                     .interact_opt();
 
-                if let Ok(Some(idx)) = selection {
-                    if idx > 0 {
-                        let name = &package_names[idx - 1];
+                if let Ok(Some(idx)) = selection
+                    && idx > 0
+                {
+                    let name = &package_names[idx - 1];
 
-                        // Confirm removal
-                        let confirm = Select::with_theme(&ColorfulTheme::default())
-                            .with_prompt(&format!("Remove package '{}'?", name))
-                            .items(&["No, keep it", "Yes, remove"])
-                            .default(0)
-                            .interact_opt();
+                    // Confirm removal
+                    let confirm = Select::with_theme(&ColorfulTheme::default())
+                        .with_prompt(format!("Remove package '{}'?", name))
+                        .items(&["No, keep it", "Yes, remove"])
+                        .default(0)
+                        .interact_opt();
 
-                        if let Ok(Some(1)) = confirm {
-                            match packages::remove_package(name) {
-                                Ok(_) => {
-                                    println!("\nRemoved package: {}", name);
-                                    // Reload plugins after removal
-                                    repl.reload(&config.prompt.theme);
-                                }
-                                Err(e) => eprintln!("Error: {}", e),
+                    if let Ok(Some(1)) = confirm {
+                        match packages::remove_package(name) {
+                            Ok(_) => {
+                                println!("\nRemoved package: {}", name);
+                                // Reload plugins after removal
+                                repl.reload(&config.prompt.theme);
                             }
+                            Err(e) => eprintln!("Error: {}", e),
                         }
                     }
                 }
@@ -1257,8 +1324,7 @@ description = "Show version"
                     match step {
                         AgenticStep::RunCommand { command, reasoning } => {
                             // Check permissions
-                            let permission =
-                                session.check_permission(&command, &cwd, &permissions);
+                            let permission = session.check_permission(&command, &cwd, &permissions);
 
                             let should_run = match permission {
                                 CommandPermission::Allowed => true,
@@ -1309,16 +1375,15 @@ description = "Show version"
 
                             if !should_run {
                                 // Send empty result to AI so it can try something else
-                                executions.push((
-                                    command,
-                                    "[Permission denied]".to_string(),
-                                    1,
-                                ));
+                                executions.push((command, "[Permission denied]".to_string(), 1));
                                 continue;
                             }
 
                             // Execute the command and capture output
-                            println!("{}", format_step(session.iterations(), &command, reasoning.as_deref()));
+                            println!(
+                                "{}",
+                                format_step(session.iterations(), &command, reasoning.as_deref())
+                            );
 
                             // Show spinner while command runs
                             let spinner = ProgressBar::new_spinner();
@@ -1435,21 +1500,19 @@ description = "Show version"
                         safety::prompt::print_blocked(&parsed)?;
                         false
                     }
-                    RiskLevel::Critical => {
-                        safety::prompt::print_critical_warning(&parsed)?
-                    }
+                    RiskLevel::Critical => safety::prompt::print_critical_warning(&parsed)?,
                     _ => {
                         // Check permissions in order: global command, command+directory (checking actual paths), all-directory
-                        if permissions.is_command_allowed(&parsed.info.command, &parsed.info.command_pattern) {
-                            true
-                        } else if permissions.are_affected_paths_allowed(
-                            &parsed.info.command,
-                            &parsed.info.command_pattern,
-                            &parsed.info.affected_paths,
-                            &cwd,
-                        ) {
-                            true
-                        } else if permissions.is_directory_allowed(&cwd) {
+                        if permissions
+                            .is_command_allowed(&parsed.info.command, &parsed.info.command_pattern)
+                            || permissions.are_affected_paths_allowed(
+                                &parsed.info.command,
+                                &parsed.info.command_pattern,
+                                &parsed.info.affected_paths,
+                                &cwd,
+                            )
+                            || permissions.is_directory_allowed(&cwd)
+                        {
                             true
                         } else {
                             match prompt_for_permission(&parsed)? {

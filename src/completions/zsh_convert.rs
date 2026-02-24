@@ -94,8 +94,8 @@ fn parse_arguments_block(block: &str, options: &mut Vec<ZshOption>) {
     // '(-v --verbose)'{-v,--verbose}'[Verbose]'
     // '--config=[Config file]:config:_files'
 
-    let simple_opt = Regex::new(r"'(-{1,2}[a-zA-Z0-9_-]+)(?:=)?\[([^\]]*)\](?::([^:]+):([^']+))?'")
-        .unwrap();
+    let simple_opt =
+        Regex::new(r"'(-{1,2}[a-zA-Z0-9_-]+)(?:=)?\[([^\]]*)\](?::([^:]+):([^']+))?'").unwrap();
 
     let combined_opt =
         Regex::new(r"'\([^)]+\)'\{([^}]+)\}'\[([^\]]*)\](?::([^:]+):([^']+))?'").unwrap();
@@ -154,9 +154,9 @@ fn parse_subcommands(content: &str, subcommands: &mut HashMap<String, String>) {
     for cap in case_re.captures_iter(content) {
         if let Some(desc) = cap.get(2) {
             let name = cap[1].to_string();
-            if !subcommands.contains_key(&name) {
-                subcommands.insert(name, desc.as_str().trim().to_string());
-            }
+            subcommands
+                .entry(name)
+                .or_insert_with(|| desc.as_str().trim().to_string());
         }
     }
 }

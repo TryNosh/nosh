@@ -6,7 +6,7 @@
 use anyhow::Result;
 use std::time::{Duration, Instant};
 
-use crate::safety::{parse_command, PermissionStore, RiskLevel};
+use crate::safety::{PermissionStore, RiskLevel, parse_command};
 
 /// Result of a single agentic step.
 #[derive(Debug, Clone)]
@@ -121,17 +121,16 @@ impl AgenticSession {
             RiskLevel::Blocked | RiskLevel::Critical => CommandPermission::Blocked,
             _ => {
                 // Check if command is already allowed
-                if permissions.is_command_allowed(&parsed.info.command, &parsed.info.command_pattern)
+                if permissions
+                    .is_command_allowed(&parsed.info.command, &parsed.info.command_pattern)
+                    || permissions.are_affected_paths_allowed(
+                        &parsed.info.command,
+                        &parsed.info.command_pattern,
+                        &parsed.info.affected_paths,
+                        cwd,
+                    )
+                    || permissions.is_directory_allowed(cwd)
                 {
-                    CommandPermission::Allowed
-                } else if permissions.are_affected_paths_allowed(
-                    &parsed.info.command,
-                    &parsed.info.command_pattern,
-                    &parsed.info.affected_paths,
-                    cwd,
-                ) {
-                    CommandPermission::Allowed
-                } else if permissions.is_directory_allowed(cwd) {
                     CommandPermission::Allowed
                 } else {
                     CommandPermission::NeedsApproval

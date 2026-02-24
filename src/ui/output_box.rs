@@ -26,10 +26,7 @@ impl OutputBox {
         // Take last N lines if too many
         let (display_lines, hidden_count) = if lines.len() > self.max_lines {
             let skip = lines.len() - self.max_lines;
-            (
-                lines.into_iter().skip(skip).collect::<Vec<_>>(),
-                skip,
-            )
+            (lines.into_iter().skip(skip).collect::<Vec<_>>(), skip)
         } else {
             (lines, 0)
         };

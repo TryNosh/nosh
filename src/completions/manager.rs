@@ -51,15 +51,15 @@ impl CompletionManager {
 
         // Scan packages directory for completions
         let packages_dir = paths::packages_dir();
-        if packages_dir.exists() {
-            if let Ok(entries) = std::fs::read_dir(&packages_dir) {
-                for entry in entries.flatten() {
-                    let package_path = entry.path();
-                    if package_path.is_dir() {
-                        let completions_path = package_path.join("completions");
-                        if completions_path.exists() {
-                            search_paths.push(completions_path);
-                        }
+        if packages_dir.exists()
+            && let Ok(entries) = std::fs::read_dir(&packages_dir)
+        {
+            for entry in entries.flatten() {
+                let package_path = entry.path();
+                if package_path.is_dir() {
+                    let completions_path = package_path.join("completions");
+                    if completions_path.exists() {
+                        search_paths.push(completions_path);
                     }
                 }
             }
@@ -137,11 +137,11 @@ impl CompletionManager {
         if subcommand.is_none() {
             // Try to complete subcommand if we have one loaded
             self.ensure_loaded(&command);
-            if let Some(cmd) = self.commands.borrow().get(&command) {
-                if !cmd.subcommands.is_empty() {
-                    // Could be completing a subcommand
-                    return CompletionContext::Subcommand { command, prefix };
-                }
+            if let Some(cmd) = self.commands.borrow().get(&command)
+                && !cmd.subcommands.is_empty()
+            {
+                // Could be completing a subcommand
+                return CompletionContext::Subcommand { command, prefix };
             }
         }
 
@@ -173,12 +173,12 @@ impl CompletionManager {
 
         if let Some(cmd) = self.commands.borrow().get(command) {
             // Check subcommand options first
-            if let Some(sub_name) = subcommand {
-                if let Some(sub) = cmd.subcommands.get(sub_name) {
-                    for opt in &sub.options {
-                        if opt.name == option && opt.takes_value {
-                            return true;
-                        }
+            if let Some(sub_name) = subcommand
+                && let Some(sub) = cmd.subcommands.get(sub_name)
+            {
+                for opt in &sub.options {
+                    if opt.name == option && opt.takes_value {
+                        return true;
                     }
                 }
             }
@@ -239,10 +239,10 @@ impl CompletionManager {
         // Enhance with descriptions from our completion files
         for completion in &mut completions {
             self.ensure_loaded(&completion.text);
-            if let Some(cmd) = self.commands.borrow().get(&completion.text) {
-                if let Some(desc) = &cmd.description {
-                    completion.description = Some(desc.clone());
-                }
+            if let Some(cmd) = self.commands.borrow().get(&completion.text)
+                && let Some(desc) = &cmd.description
+            {
+                completion.description = Some(desc.clone());
             }
         }
 
@@ -284,16 +284,16 @@ impl CompletionManager {
 
         if let Some(cmd) = self.commands.borrow().get(command) {
             // Get subcommand options if present
-            if let Some(sub_name) = subcommand {
-                if let Some(sub) = cmd.subcommands.get(sub_name) {
-                    for opt in &sub.options {
-                        if opt.name.starts_with(prefix) {
-                            let mut c = Completion::new(&opt.name);
-                            if let Some(desc) = &opt.description {
-                                c = c.with_description(desc);
-                            }
-                            completions.push(c);
+            if let Some(sub_name) = subcommand
+                && let Some(sub) = cmd.subcommands.get(sub_name)
+            {
+                for opt in &sub.options {
+                    if opt.name.starts_with(prefix) {
+                        let mut c = Completion::new(&opt.name);
+                        if let Some(desc) = &opt.description {
+                            c = c.with_description(desc);
                         }
+                        completions.push(c);
                     }
                 }
             }
@@ -344,12 +344,12 @@ impl CompletionManager {
         option: &str,
     ) -> Option<String> {
         // Check subcommand options first
-        if let Some(sub_name) = subcommand {
-            if let Some(sub) = cmd.subcommands.get(sub_name) {
-                for opt in &sub.options {
-                    if opt.name == option {
-                        return opt.value_completer.clone();
-                    }
+        if let Some(sub_name) = subcommand
+            && let Some(sub) = cmd.subcommands.get(sub_name)
+        {
+            for opt in &sub.options {
+                if opt.name == option {
+                    return opt.value_completer.clone();
                 }
             }
         }
@@ -375,12 +375,11 @@ impl CompletionManager {
 
         if let Some(cmd) = self.commands.borrow().get(command) {
             // Check subcommand's positional completer
-            if let Some(sub_name) = subcommand {
-                if let Some(sub) = cmd.subcommands.get(sub_name) {
-                    if let Some(ref completer) = sub.positional {
-                        return self.run_completer(command, completer, prefix);
-                    }
-                }
+            if let Some(sub_name) = subcommand
+                && let Some(sub) = cmd.subcommands.get(sub_name)
+                && let Some(ref completer) = sub.positional
+            {
+                return self.run_completer(command, completer, prefix);
             }
 
             // Check command's positional completer
@@ -401,10 +400,10 @@ impl CompletionManager {
         }
 
         // Check if it's a dynamic completer
-        if let Some(cmd) = self.commands.borrow().get(command) {
-            if let Some(dynamic) = cmd.dynamic.get(completer) {
-                return self.run_dynamic_completer(completer, dynamic, prefix);
-            }
+        if let Some(cmd) = self.commands.borrow().get(command)
+            && let Some(dynamic) = cmd.dynamic.get(completer)
+        {
+            return self.run_dynamic_completer(completer, dynamic, prefix);
         }
 
         // Unknown completer - default to files
@@ -423,15 +422,15 @@ impl CompletionManager {
         // Check cache
         {
             let cache = self.dynamic_cache.borrow();
-            if let Some(entry) = cache.get(&cache_key) {
-                if entry.is_valid() {
-                    return entry
-                        .results
-                        .iter()
-                        .filter(|s| s.starts_with(prefix))
-                        .map(|s| Completion::new(s))
-                        .collect();
-                }
+            if let Some(entry) = cache.get(&cache_key)
+                && entry.is_valid()
+            {
+                return entry
+                    .results
+                    .iter()
+                    .filter(|s| s.starts_with(prefix))
+                    .map(Completion::new)
+                    .collect();
             }
         }
 
@@ -452,7 +451,7 @@ impl CompletionManager {
         results
             .iter()
             .filter(|s| s.starts_with(prefix))
-            .map(|s| Completion::new(s))
+            .map(Completion::new)
             .collect()
     }
 
@@ -479,13 +478,13 @@ impl CompletionManager {
         // Search for completion file
         for path in &self.search_paths {
             let file = path.join(format!("{}.toml", command));
-            if file.exists() {
-                if let Ok(completion) = self.load_file(&file, command) {
-                    self.commands
-                        .borrow_mut()
-                        .insert(command.to_string(), completion);
-                    return;
-                }
+            if file.exists()
+                && let Ok(completion) = self.load_file(&file, command)
+            {
+                self.commands
+                    .borrow_mut()
+                    .insert(command.to_string(), completion);
+                return;
             }
         }
     }

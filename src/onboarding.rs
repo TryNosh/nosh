@@ -1,13 +1,13 @@
-use anyhow::{anyhow, Result};
-use crossterm::style::{Color, ResetColor, SetForegroundColor};
+use crate::auth::Credentials;
+use crate::config::Config;
+use anyhow::{Result, anyhow};
 use crossterm::ExecutableCommand;
-use dialoguer::{theme::ColorfulTheme, Input, Select};
+use crossterm::style::{Color, ResetColor, SetForegroundColor};
+use dialoguer::{Input, Select, theme::ColorfulTheme};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::io::{self, Write};
 use std::time::Duration;
-use crate::auth::Credentials;
-use crate::config::Config;
 
 pub enum OnboardingChoice {
     Cloud,
@@ -50,9 +50,15 @@ pub async fn run_onboarding() -> Result<OnboardingChoice> {
     writeln!(stdout, "\nWelcome to nosh!")?;
     stdout.execute(ResetColor)?;
     writeln!(stdout)?;
-    writeln!(stdout, "By using nosh, you agree to the Terms of Use and Privacy Policy.")?;
+    writeln!(
+        stdout,
+        "By using nosh, you agree to the Terms of Use and Privacy Policy."
+    )?;
     stdout.execute(SetForegroundColor(Color::DarkGrey))?;
-    writeln!(stdout, "https://nosh.sh/docs/terms  •  https://nosh.sh/docs/privacy")?;
+    writeln!(
+        stdout,
+        "https://nosh.sh/docs/terms  •  https://nosh.sh/docs/privacy"
+    )?;
     stdout.execute(ResetColor)?;
     writeln!(stdout)?;
 
@@ -117,7 +123,9 @@ async fn setup_cloud() -> Result<()> {
     // Start device auth flow
     let response = client
         .post(format!("{}/auth/device", base_url))
-        .json(&DeviceAuthRequest { email: email.clone() })
+        .json(&DeviceAuthRequest {
+            email: email.clone(),
+        })
         .send()
         .await;
 
@@ -138,7 +146,10 @@ async fn setup_cloud() -> Result<()> {
             stdout.execute(SetForegroundColor(Color::Yellow))?;
             writeln!(stdout, "Could not connect to Nosh Cloud: {}", e)?;
             stdout.execute(ResetColor)?;
-            writeln!(stdout, "Enter your token manually (get one from https://nosh.sh):")?;
+            writeln!(
+                stdout,
+                "Enter your token manually (get one from https://nosh.sh):"
+            )?;
             write!(stdout, "Token: ")?;
             stdout.flush()?;
 
@@ -157,7 +168,10 @@ async fn setup_cloud() -> Result<()> {
 
     writeln!(stdout)?;
     stdout.execute(SetForegroundColor(Color::Green))?;
-    writeln!(stdout, "Magic link sent! Check your inbox and click the link.")?;
+    writeln!(
+        stdout,
+        "Magic link sent! Check your inbox and click the link."
+    )?;
     stdout.execute(ResetColor)?;
     writeln!(stdout, "Waiting for you to click the link...")?;
     writeln!(stdout)?;

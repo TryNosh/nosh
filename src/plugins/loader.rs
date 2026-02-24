@@ -14,7 +14,7 @@ use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
-use super::{parse_duration, CacheDuration, Plugin, VariableProvider};
+use super::{CacheDuration, Plugin, VariableProvider, parse_duration};
 use crate::paths;
 
 /// Soft timeout - use cached value after this duration.
@@ -71,18 +71,18 @@ impl PluginManager {
 
         // Load from packages (includes builtins and git-installed packages)
         let packages_dir = paths::packages_dir();
-        if packages_dir.exists() {
-            if let Ok(entries) = fs::read_dir(&packages_dir) {
-                for entry in entries.flatten() {
-                    let package_path = entry.path();
-                    if package_path.is_dir() {
-                        if let Some(package_name) = package_path.file_name().and_then(|n| n.to_str()) {
-                            let plugins_path = package_path.join("plugins");
-                            if plugins_path.exists() {
-                                // Load plugins with "package_name/" prefix
-                                self.load_from_directory(&plugins_path, Some(package_name))?;
-                            }
-                        }
+        if packages_dir.exists()
+            && let Ok(entries) = fs::read_dir(&packages_dir)
+        {
+            for entry in entries.flatten() {
+                let package_path = entry.path();
+                if package_path.is_dir()
+                    && let Some(package_name) = package_path.file_name().and_then(|n| n.to_str())
+                {
+                    let plugins_path = package_path.join("plugins");
+                    if plugins_path.exists() {
+                        // Load plugins with "package_name/" prefix
+                        self.load_from_directory(&plugins_path, Some(package_name))?;
                     }
                 }
             }
@@ -103,17 +103,17 @@ impl PluginManager {
             let entry = entry?;
             let path = entry.path();
 
-            if path.extension().map_or(false, |ext| ext == "toml") {
-                if let Ok(mut plugin) = self.load_plugin(&path) {
-                    // Apply package prefix if provided
-                    let name = if let Some(prefix) = package_prefix {
-                        format!("{}/{}", prefix, plugin.plugin.name)
-                    } else {
-                        plugin.plugin.name.clone()
-                    };
-                    plugin.plugin.name = name.clone();
-                    self.plugins.insert(name, plugin);
-                }
+            if path.extension().is_some_and(|ext| ext == "toml")
+                && let Ok(mut plugin) = self.load_plugin(&path)
+            {
+                // Apply package prefix if provided
+                let name = if let Some(prefix) = package_prefix {
+                    format!("{}/{}", prefix, plugin.plugin.name)
+                } else {
+                    plugin.plugin.name.clone()
+                };
+                plugin.plugin.name = name.clone();
+                self.plugins.insert(name, plugin);
             }
         }
 
@@ -246,12 +246,11 @@ impl PluginManager {
         let plugin_name = parts[0];
         let var_name = parts[1];
 
-        if let Some(plugin) = self.plugins.get(plugin_name) {
-            if let Some(VariableProvider::Command { timeout, .. }) = plugin.provides.get(var_name) {
-                if let Some(timeout_str) = timeout {
-                    return parse_duration(timeout_str).unwrap_or(SOFT_TIMEOUT);
-                }
-            }
+        if let Some(plugin) = self.plugins.get(plugin_name)
+            && let Some(VariableProvider::Command { timeout, .. }) = plugin.provides.get(var_name)
+            && let Some(timeout_str) = timeout
+        {
+            return parse_duration(timeout_str).unwrap_or(SOFT_TIMEOUT);
         }
 
         SOFT_TIMEOUT
@@ -267,13 +266,12 @@ impl PluginManager {
         let plugin_name = parts[0];
         let var_name = parts[1];
 
-        if let Some(plugin) = self.plugins.get(plugin_name) {
-            if let Some(VariableProvider::Command { cache, .. }) = plugin.provides.get(var_name) {
-                if let Some(cache_str) = cache {
-                    return CacheDuration::parse(cache_str)
-                        .unwrap_or(CacheDuration::Duration(CACHE_DURATION));
-                }
-            }
+        if let Some(plugin) = self.plugins.get(plugin_name)
+            && let Some(VariableProvider::Command { cache, .. }) = plugin.provides.get(var_name)
+            && let Some(cache_str) = cache
+        {
+            return CacheDuration::parse(cache_str)
+                .unwrap_or(CacheDuration::Duration(CACHE_DURATION));
         }
 
         CacheDuration::Duration(CACHE_DURATION)
@@ -296,10 +294,10 @@ impl PluginManager {
         }
 
         // Check if it's an internal provider
-        if let Some(plugin) = self.plugins.get(plugin_name) {
-            if let Some(provider) = plugin.provides.get(var_name) {
-                return matches!(provider, VariableProvider::Internal { .. });
-            }
+        if let Some(plugin) = self.plugins.get(plugin_name)
+            && let Some(provider) = plugin.provides.get(var_name)
+        {
+            return matches!(provider, VariableProvider::Internal { .. });
         }
 
         false
@@ -325,27 +323,27 @@ impl PluginManager {
         let plugin = self.plugins.get(plugin_name)?;
         let provider = plugin.provides.get(var_name)?;
 
-        if let VariableProvider::Internal { source } = provider {
-            if source == "internal" {
-                // Handle internal variables like exec_time:duration, exec_time:took
-                if var_name == "duration" || var_name == "took" {
-                    if let Some(duration) = self.last_command_duration {
-                        // Get min_ms from plugin config
-                        let min_ms = plugin
-                            .config
-                            .get("min_ms")
-                            .and_then(|v| v.as_integer())
-                            .unwrap_or(500) as u64;
+        if let VariableProvider::Internal { source } = provider
+            && source == "internal"
+        {
+            // Handle internal variables like exec_time:duration, exec_time:took
+            if (var_name == "duration" || var_name == "took")
+                && let Some(duration) = self.last_command_duration
+            {
+                // Get min_ms from plugin config
+                let min_ms = plugin
+                    .config
+                    .get("min_ms")
+                    .and_then(|v| v.as_integer())
+                    .unwrap_or(500) as u64;
 
-                        let ms = duration.as_millis() as u64;
-                        if ms >= min_ms {
-                            let formatted = format_duration(duration);
-                            if var_name == "took" {
-                                return Some(format!("took {}", formatted));
-                            }
-                            return Some(formatted);
-                        }
+                let ms = duration.as_millis() as u64;
+                if ms >= min_ms {
+                    let formatted = format_duration(duration);
+                    if var_name == "took" {
+                        return Some(format!("took {}", formatted));
                     }
+                    return Some(formatted);
                 }
             }
         }
@@ -548,7 +546,9 @@ impl PluginManager {
         provider: &VariableProvider,
     ) -> Option<String> {
         match provider {
-            VariableProvider::Command { command, transform, .. } => {
+            VariableProvider::Command {
+                command, transform, ..
+            } => {
                 let output = std::process::Command::new("sh")
                     .arg("-c")
                     .arg(command)
@@ -579,32 +579,30 @@ impl PluginManager {
                     _ => Some(stdout),
                 }
             }
-            VariableProvider::Internal { source } => {
-                match source.as_str() {
-                    "internal" => {
-                        if var_name == "duration" || var_name == "took" {
-                            if let Some(duration) = self.last_command_duration {
-                                let min_ms = plugin
-                                    .config
-                                    .get("min_ms")
-                                    .and_then(|v| v.as_integer())
-                                    .unwrap_or(500) as u64;
+            VariableProvider::Internal { source } => match source.as_str() {
+                "internal" => {
+                    if (var_name == "duration" || var_name == "took")
+                        && let Some(duration) = self.last_command_duration
+                    {
+                        let min_ms = plugin
+                            .config
+                            .get("min_ms")
+                            .and_then(|v| v.as_integer())
+                            .unwrap_or(500) as u64;
 
-                                let ms = duration.as_millis() as u64;
-                                if ms >= min_ms {
-                                    let formatted = format_duration(duration);
-                                    if var_name == "took" {
-                                        return Some(format!("took {}", formatted));
-                                    }
-                                    return Some(formatted);
-                                }
+                        let ms = duration.as_millis() as u64;
+                        if ms >= min_ms {
+                            let formatted = format_duration(duration);
+                            if var_name == "took" {
+                                return Some(format!("took {}", formatted));
                             }
+                            return Some(formatted);
                         }
-                        None
                     }
-                    _ => None,
+                    None
                 }
-            }
+                _ => None,
+            },
         }
     }
 
@@ -621,13 +619,21 @@ impl PluginManager {
     }
 
     /// Debug a plugin by running all its variables and returning results.
-    pub async fn debug_plugin(&self, plugin_name: &str) -> Option<Vec<(String, String, Result<String, String>)>> {
+    pub async fn debug_plugin(
+        &self,
+        plugin_name: &str,
+    ) -> Option<Vec<(String, String, Result<String, String>)>> {
         let plugin = self.plugins.get(plugin_name)?;
         let mut results = Vec::new();
 
         for (var_name, provider) in &plugin.provides {
             let (provider_desc, result) = match provider {
-                VariableProvider::Command { command, transform, timeout, cache } => {
+                VariableProvider::Command {
+                    command,
+                    transform,
+                    timeout,
+                    cache,
+                } => {
                     let mut desc = format!("command: {}", command);
                     if let Some(t) = transform {
                         desc.push_str(&format!(" (transform: {})", t));
@@ -648,8 +654,10 @@ impl PluginManager {
                     let result = match output {
                         Ok(out) => {
                             if out.status.success() {
-                                let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                                let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+                                let stdout =
+                                    String::from_utf8_lossy(&out.stdout).trim().to_string();
+                                let stderr =
+                                    String::from_utf8_lossy(&out.stderr).trim().to_string();
                                 if stdout.is_empty() && !stderr.is_empty() {
                                     Err(format!("stderr: {}", stderr))
                                 } else if stdout.is_empty() {
@@ -659,9 +667,17 @@ impl PluginManager {
                                     match transform.as_deref() {
                                         Some("non_empty") => {
                                             let icon = if stdout.is_empty() {
-                                                plugin.icons.get("clean").cloned().unwrap_or_default()
+                                                plugin
+                                                    .icons
+                                                    .get("clean")
+                                                    .cloned()
+                                                    .unwrap_or_default()
                                             } else {
-                                                plugin.icons.get("dirty").cloned().unwrap_or_default()
+                                                plugin
+                                                    .icons
+                                                    .get("dirty")
+                                                    .cloned()
+                                                    .unwrap_or_default()
                                             };
                                             Ok(format!("{} (raw: {})", icon, stdout))
                                         }
@@ -678,8 +694,13 @@ impl PluginManager {
                                     }
                                 }
                             } else {
-                                let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
-                                Err(format!("exit {}: {}", out.status.code().unwrap_or(-1), stderr))
+                                let stderr =
+                                    String::from_utf8_lossy(&out.stderr).trim().to_string();
+                                Err(format!(
+                                    "exit {}: {}",
+                                    out.status.code().unwrap_or(-1),
+                                    stderr
+                                ))
                             }
                         }
                         Err(e) => Err(format!("failed to run: {}", e)),
@@ -714,7 +735,9 @@ async fn execute_provider_async(
     provider: &VariableProvider,
 ) -> Option<String> {
     match provider {
-        VariableProvider::Command { command, transform, .. } => {
+        VariableProvider::Command {
+            command, transform, ..
+        } => {
             let output = tokio::process::Command::new("sh")
                 .arg("-c")
                 .arg(command)

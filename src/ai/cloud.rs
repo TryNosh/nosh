@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
@@ -179,7 +179,9 @@ impl CloudClient {
                 code: None,
                 message: Some("Run /buy to get more tokens".to_string()),
             });
-            let msg = error.message.unwrap_or_else(|| "Run /buy to get more tokens".to_string());
+            let msg = error
+                .message
+                .unwrap_or_else(|| "Run /buy to get more tokens".to_string());
             return Err(anyhow!("Out of tokens. {}", msg));
         }
 
@@ -189,7 +191,9 @@ impl CloudClient {
                 code: None,
                 message: Some("Subscribe for guaranteed access".to_string()),
             });
-            let msg = error.message.unwrap_or_else(|| "Subscribe for guaranteed access".to_string());
+            let msg = error
+                .message
+                .unwrap_or_else(|| "Subscribe for guaranteed access".to_string());
             return Err(anyhow!("Free tier at capacity. {}", msg));
         }
 
@@ -402,14 +406,15 @@ impl CloudClient {
             let error: ErrorResponse = response.json().await.unwrap_or(ErrorResponse {
                 error: "Subscription required".to_string(),
                 code: None,
-                message: Some("Agentic mode requires a paid subscription. Use ? for free queries.".to_string()),
+                message: Some(
+                    "Agentic mode requires a paid subscription. Use ? for free queries."
+                        .to_string(),
+                ),
             });
             let msg = error
                 .message
                 .unwrap_or_else(|| "Agentic mode requires a paid subscription".to_string());
-            return Ok(AgenticStep::Error {
-                message: msg,
-            });
+            return Ok(AgenticStep::Error { message: msg });
         }
 
         if !status.is_success() {

@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::rc::Rc;
 use std::time::Instant;
 
 use anyhow::Result;
@@ -29,18 +29,22 @@ pub struct Repl {
     theme: Theme,
     last_command_start: Option<Instant>,
     #[allow(dead_code)]
-    completion_manager: Arc<CompletionManager>,
+    completion_manager: Rc<CompletionManager>,
 }
 
 impl Repl {
-    pub fn new(theme_name: &str, _history_load_count: Option<usize>, syntax_highlighting: bool) -> Result<Self> {
+    pub fn new(
+        theme_name: &str,
+        _history_load_count: Option<usize>,
+        syntax_highlighting: bool,
+    ) -> Result<Self> {
         // Create SQLite-backed history with lazy loading
         let history = SqliteRustylineHistory::open(&paths::history_db())
             .map_err(|e| anyhow::anyhow!("Failed to open history: {}", e))?;
 
         // Create completion manager (lazy-loading)
-        let completion_manager = Arc::new(CompletionManager::new());
-        let helper = NoshHelper::new(Arc::clone(&completion_manager), syntax_highlighting);
+        let completion_manager = Rc::new(CompletionManager::new());
+        let helper = NoshHelper::new(Rc::clone(&completion_manager), syntax_highlighting);
 
         // Configure rustyline with our SQLite history and helper
         let config = Config::builder()
@@ -111,7 +115,8 @@ impl Repl {
         let values = self.plugin_manager.get_variables(vars).await;
 
         // Format prompt with fetched values
-        self.theme.format_prompt_with_values(&values, &mut self.plugin_manager)
+        self.theme
+            .format_prompt_with_values(&values, &mut self.plugin_manager)
     }
 
     pub async fn readline(&mut self) -> Result<ReadlineResult> {
@@ -147,7 +152,10 @@ impl Repl {
     }
 
     /// Debug a specific plugin.
-    pub async fn debug_plugin(&self, plugin_name: &str) -> Option<Vec<(String, String, Result<String, String>)>> {
+    pub async fn debug_plugin(
+        &self,
+        plugin_name: &str,
+    ) -> Option<Vec<(String, String, Result<String, String>)>> {
         self.plugin_manager.debug_plugin(plugin_name).await
     }
 

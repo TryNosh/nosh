@@ -15,18 +15,13 @@ pub fn cloud_url() -> String {
     #[cfg(not(debug_assertions))]
     {
         // Release: use compile-time URL only
-        compile_time_url
-            .unwrap_or(DEFAULT_CLOUD_URL)
-            .to_string()
+        compile_time_url.unwrap_or(DEFAULT_CLOUD_URL).to_string()
     }
 
     #[cfg(debug_assertions)]
     {
         // Debug: allow runtime override for development
-        std::env::var("NOSH_CLOUD_URL").unwrap_or_else(|_| {
-            compile_time_url
-                .unwrap_or(DEFAULT_CLOUD_URL)
-                .to_string()
-        })
+        std::env::var("NOSH_CLOUD_URL")
+            .unwrap_or_else(|_| compile_time_url.unwrap_or(DEFAULT_CLOUD_URL).to_string())
     }
 }

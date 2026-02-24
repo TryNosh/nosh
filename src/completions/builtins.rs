@@ -151,11 +151,11 @@ fn complete_files(prefix: &str, dirs_only: bool) -> Vec<Completion> {
 
 /// Expand ~ to home directory.
 fn expand_tilde(path: &Path) -> PathBuf {
-    if path.starts_with("~") {
-        if let Some(home) = dirs::home_dir() {
-            let rest = path.strip_prefix("~").unwrap();
-            return home.join(rest);
-        }
+    if path.starts_with("~")
+        && let Some(home) = dirs::home_dir()
+    {
+        let rest = path.strip_prefix("~").unwrap();
+        return home.join(rest);
     }
     path.to_path_buf()
 }
@@ -224,10 +224,10 @@ fn complete_users(prefix: &str) -> Vec<Completion> {
     // Read /etc/passwd on Unix systems
     if let Ok(content) = fs::read_to_string("/etc/passwd") {
         for line in content.lines() {
-            if let Some(user) = line.split(':').next() {
-                if user.starts_with(prefix) {
-                    completions.push(Completion::new(user).with_description("user"));
-                }
+            if let Some(user) = line.split(':').next()
+                && user.starts_with(prefix)
+            {
+                completions.push(Completion::new(user).with_description("user"));
             }
         }
     }
@@ -243,10 +243,10 @@ fn complete_groups(prefix: &str) -> Vec<Completion> {
     // Read /etc/group on Unix systems
     if let Ok(content) = fs::read_to_string("/etc/group") {
         for line in content.lines() {
-            if let Some(group) = line.split(':').next() {
-                if group.starts_with(prefix) {
-                    completions.push(Completion::new(group).with_description("group"));
-                }
+            if let Some(group) = line.split(':').next()
+                && group.starts_with(prefix)
+            {
+                completions.push(Completion::new(group).with_description("group"));
             }
         }
     }
@@ -320,31 +320,32 @@ fn complete_processes(prefix: &str) -> Vec<Completion> {
     let mut seen = HashSet::new();
 
     // Use ps command to get process list
-    if let Ok(output) = Command::new("ps").args(["-axo", "pid,comm"]).output() {
-        if let Ok(stdout) = String::from_utf8(output.stdout) {
-            for line in stdout.lines().skip(1) {
-                // Skip header
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if parts.len() >= 2 {
-                    let pid = parts[0];
-                    let name = parts[1..].join(" ");
+    if let Ok(output) = Command::new("ps").args(["-axo", "pid,comm"]).output()
+        && let Ok(stdout) = String::from_utf8(output.stdout)
+    {
+        for line in stdout.lines().skip(1) {
+            // Skip header
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 2 {
+                let pid = parts[0];
+                let name = parts[1..].join(" ");
 
-                    // Extract just the command name (not full path)
-                    let short_name = Path::new(&name)
-                        .file_name()
-                        .map(|s| s.to_string_lossy().to_string())
-                        .unwrap_or(name.clone());
+                // Extract just the command name (not full path)
+                let short_name = Path::new(&name)
+                    .file_name()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or(name.clone());
 
-                    // Match by name
-                    if short_name.starts_with(prefix) && seen.insert(short_name.clone()) {
-                        completions
-                            .push(Completion::new(&short_name).with_description(format!("pid {}", pid)));
-                    }
+                // Match by name
+                if short_name.starts_with(prefix) && seen.insert(short_name.clone()) {
+                    completions.push(
+                        Completion::new(&short_name).with_description(format!("pid {}", pid)),
+                    );
+                }
 
-                    // Match by PID
-                    if pid.starts_with(prefix) {
-                        completions.push(Completion::new(pid).with_description(&short_name));
-                    }
+                // Match by PID
+                if pid.starts_with(prefix) {
+                    completions.push(Completion::new(pid).with_description(&short_name));
                 }
             }
         }
@@ -394,7 +395,8 @@ fn complete_signals(prefix: &str) -> Vec<Completion> {
     SIGNALS
         .iter()
         .filter(|(name, _)| {
-            name.starts_with(&prefix_upper) || name.strip_prefix("SIG").unwrap().starts_with(prefix_no_sig)
+            name.starts_with(&prefix_upper)
+                || name.strip_prefix("SIG").unwrap().starts_with(prefix_no_sig)
         })
         .map(|(name, desc)| Completion::new(*name).with_description(*desc))
         .collect()
@@ -406,8 +408,14 @@ mod tests {
 
     #[test]
     fn test_builtin_from_name() {
-        assert_eq!(BuiltinCompleter::from_name("files"), Some(BuiltinCompleter::Files));
-        assert_eq!(BuiltinCompleter::from_name("directories"), Some(BuiltinCompleter::Directories));
+        assert_eq!(
+            BuiltinCompleter::from_name("files"),
+            Some(BuiltinCompleter::Files)
+        );
+        assert_eq!(
+            BuiltinCompleter::from_name("directories"),
+            Some(BuiltinCompleter::Directories)
+        );
         assert_eq!(BuiltinCompleter::from_name("unknown"), None);
     }
 

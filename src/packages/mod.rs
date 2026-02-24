@@ -2,7 +2,7 @@
 //!
 //! Handles installing, upgrading, and removing theme/plugin packages from Git repositories.
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -104,9 +104,7 @@ pub fn parse_install_source(input: &str) -> Result<(String, String)> {
         // Assume user/repo format
         let parts: Vec<&str> = input.splitn(2, '/').collect();
         if parts.len() != 2 || parts[0].is_empty() || parts[1].is_empty() {
-            return Err(anyhow!(
-                "Invalid format. Use 'user/repo' or a full URL."
-            ));
+            return Err(anyhow!("Invalid format. Use 'user/repo' or a full URL."));
         }
 
         let user = parts[0];
@@ -114,9 +112,7 @@ pub fn parse_install_source(input: &str) -> Result<(String, String)> {
         let url = format!("https://github.com/{}/{}.git", user, repo);
         Ok((url, repo.to_string()))
     } else {
-        Err(anyhow!(
-            "Invalid format. Use 'user/repo' or a full URL."
-        ))
+        Err(anyhow!("Invalid format. Use 'user/repo' or a full URL."))
     }
 }
 
@@ -297,30 +293,30 @@ pub fn get_package_contents(name: &str) -> (Vec<String>, Vec<String>) {
 
     // Check for themes
     let themes_dir = package_dir.join("themes");
-    if themes_dir.exists() {
-        if let Ok(entries) = fs::read_dir(&themes_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().map_or(false, |ext| ext == "toml") {
-                    if let Some(stem) = path.file_stem() {
-                        themes.push(stem.to_string_lossy().to_string());
-                    }
-                }
+    if themes_dir.exists()
+        && let Ok(entries) = fs::read_dir(&themes_dir)
+    {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().is_some_and(|ext| ext == "toml")
+                && let Some(stem) = path.file_stem()
+            {
+                themes.push(stem.to_string_lossy().to_string());
             }
         }
     }
 
     // Check for plugins
     let plugins_dir = package_dir.join("plugins");
-    if plugins_dir.exists() {
-        if let Ok(entries) = fs::read_dir(&plugins_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().map_or(false, |ext| ext == "toml") {
-                    if let Some(stem) = path.file_stem() {
-                        plugins.push(stem.to_string_lossy().to_string());
-                    }
-                }
+    if plugins_dir.exists()
+        && let Ok(entries) = fs::read_dir(&plugins_dir)
+    {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().is_some_and(|ext| ext == "toml")
+                && let Some(stem) = path.file_stem()
+            {
+                plugins.push(stem.to_string_lossy().to_string());
             }
         }
     }

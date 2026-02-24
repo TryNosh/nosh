@@ -2,10 +2,10 @@ use anyhow::Result;
 use brush_builtins::{BuiltinSet, default_builtins};
 use brush_core::ProcessGroupPolicy;
 use brush_core::variables::ShellVariable;
-use brush_core::{Shell, ExecutionParameters};
+use brush_core::{ExecutionParameters, Shell};
 
-use crate::paths;
 use super::terminal;
+use crate::paths;
 
 pub struct ShellSession {
     shell: Shell,
@@ -67,7 +67,11 @@ impl ShellSession {
         let mut job_control_params = ExecutionParameters::default();
         job_control_params.process_group_policy = ProcessGroupPolicy::NewProcessGroup;
 
-        Ok(Self { shell, params, job_control_params })
+        Ok(Self {
+            shell,
+            params,
+            job_control_params,
+        })
     }
 
     /// Execute a command string with job control (for direct shell commands).

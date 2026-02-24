@@ -43,15 +43,12 @@ impl History {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 started_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
                 pid INTEGER
-            );"
+            );",
         )?;
 
         // Register this session
         let pid = std::process::id() as i64;
-        conn.execute(
-            "INSERT INTO sessions (pid) VALUES (?1)",
-            params![pid],
-        )?;
+        conn.execute("INSERT INTO sessions (pid) VALUES (?1)", params![pid])?;
         let session_id = conn.last_insert_rowid();
 
         Ok(Self { conn, session_id })
@@ -76,7 +73,7 @@ impl History {
         let mut stmt = self.conn.prepare(
             "SELECT DISTINCT command FROM history
              ORDER BY timestamp DESC, id DESC
-             LIMIT ?1"
+             LIMIT ?1",
         )?;
 
         let commands = stmt
@@ -99,7 +96,7 @@ impl History {
             "SELECT DISTINCT command FROM history
              WHERE command LIKE ?1
              ORDER BY timestamp DESC, id DESC
-             LIMIT ?2"
+             LIMIT ?2",
         )?;
 
         let search_pattern = format!("%{}%", pattern);
@@ -117,7 +114,7 @@ impl History {
             "SELECT DISTINCT command FROM history
              WHERE cwd = ?1 OR cwd LIKE ?2
              ORDER BY timestamp DESC, id DESC
-             LIMIT ?3"
+             LIMIT ?3",
         )?;
 
         let dir_pattern = format!("{}/%", dir);
@@ -130,11 +127,11 @@ impl History {
 
     /// Get total number of unique commands in history.
     pub fn count(&self) -> Result<i64> {
-        let count: i64 = self.conn.query_row(
-            "SELECT COUNT(DISTINCT command) FROM history",
-            [],
-            |row| row.get(0),
-        )?;
+        let count: i64 =
+            self.conn
+                .query_row("SELECT COUNT(DISTINCT command) FROM history", [], |row| {
+                    row.get(0)
+                })?;
         Ok(count)
     }
 

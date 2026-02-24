@@ -38,10 +38,7 @@ fn get_python_version() -> Option<String> {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     // Parse "Python 3.11.6" -> "3.11.6"
-    let version = stdout
-        .split_whitespace()
-        .nth(1)
-        .map(|s| s.to_string())?;
+    let version = stdout.split_whitespace().nth(1).map(|s| s.to_string())?;
 
     Some(version)
 }
@@ -64,16 +61,16 @@ pub fn get_pyproject(dir: &Path) -> Option<(String, String)> {
     }
 
     // Try [tool.poetry] section
-    if let Some(tool) = parsed.get("tool") {
-        if let Some(poetry) = tool.get("poetry") {
-            let name = poetry.get("name")?.as_str()?.to_string();
-            let version = poetry
-                .get("version")
-                .and_then(|v| v.as_str())
-                .unwrap_or("0.0.0")
-                .to_string();
-            return Some((name, version));
-        }
+    if let Some(tool) = parsed.get("tool")
+        && let Some(poetry) = tool.get("poetry")
+    {
+        let name = poetry.get("name")?.as_str()?.to_string();
+        let version = poetry
+            .get("version")
+            .and_then(|v| v.as_str())
+            .unwrap_or("0.0.0")
+            .to_string();
+        return Some((name, version));
     }
 
     None

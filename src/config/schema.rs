@@ -6,6 +6,7 @@ use crate::paths;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 pub struct Config {
     /// User has completed or skipped onboarding
     #[serde(default)]
@@ -56,19 +57,6 @@ pub struct HistoryConfig {
     pub load_count: usize,
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            onboarding_complete: false,
-            welcome_message: String::new(),
-            ai: AiConfig::default(),
-            behavior: BehaviorConfig::default(),
-            prompt: PromptConfig::default(),
-            history: HistoryConfig::default(),
-        }
-    }
-}
-
 impl Default for AiConfig {
     fn default() -> Self {
         Self {
@@ -82,9 +70,7 @@ impl Default for AiConfig {
 
 impl Default for BehaviorConfig {
     fn default() -> Self {
-        Self {
-            show_command: true,
-        }
+        Self { show_command: true }
     }
 }
 
@@ -99,9 +85,7 @@ impl Default for PromptConfig {
 
 impl Default for HistoryConfig {
     fn default() -> Self {
-        Self {
-            load_count: 200,
-        }
+        Self { load_count: 200 }
     }
 }
 

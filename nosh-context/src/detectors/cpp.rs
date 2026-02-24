@@ -47,10 +47,7 @@ fn get_cpp_version() -> Option<String> {
 }
 
 fn get_clang_version() -> Option<String> {
-    let output = Command::new("clang++")
-        .args(["--version"])
-        .output()
-        .ok()?;
+    let output = Command::new("clang++").args(["--version"]).output().ok()?;
 
     if !output.status.success() {
         return None;

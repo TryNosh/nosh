@@ -20,9 +20,8 @@ pub fn detect(dir: &Path) -> ProjectContext {
     // 2. Check indicators (no I/O, just HashSet lookups)
     let has_cargo = files.contains("Cargo.toml");
     let has_package_json = files.contains("package.json");
-    let has_bun = files.contains("bun.lockb")
-        || files.contains("bun.lock")
-        || files.contains("bunfig.toml");
+    let has_bun =
+        files.contains("bun.lockb") || files.contains("bun.lock") || files.contains("bunfig.toml");
     let has_go_mod = files.contains("go.mod");
     let has_python = files.contains("pyproject.toml")
         || files.contains("setup.py")
@@ -31,7 +30,9 @@ pub fn detect(dir: &Path) -> ProjectContext {
         || files.contains("meson.build")
         || files.contains("conanfile.txt")
         || files.contains("conanfile.py")
-        || files.iter().any(|f| f.ends_with(".cpp") || f.ends_with(".cc") || f.ends_with(".cxx"));
+        || files
+            .iter()
+            .any(|f| f.ends_with(".cpp") || f.ends_with(".cc") || f.ends_with(".cxx"));
     let has_docker = files.contains("Dockerfile")
         || files.contains(".dockerignore")
         || files.contains("docker-compose.yml")
@@ -52,9 +53,21 @@ pub fn detect(dir: &Path) -> ProjectContext {
     };
     let bun_info = if has_bun { bun::detect(dir) } else { None };
     let go_info = if has_go_mod { go::detect(dir) } else { None };
-    let python_info = if has_python { python::detect(dir) } else { None };
-    let cpp_info = if has_cpp { cpp::detect(dir, &files) } else { None };
-    let docker_info = if has_docker { docker::detect(dir, &files) } else { None };
+    let python_info = if has_python {
+        python::detect(dir)
+    } else {
+        None
+    };
+    let cpp_info = if has_cpp {
+        cpp::detect(dir, &files)
+    } else {
+        None
+    };
+    let docker_info = if has_docker {
+        docker::detect(dir, &files)
+    } else {
+        None
+    };
 
     ProjectContext {
         dir: dir_str,

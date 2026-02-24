@@ -7,7 +7,7 @@ use rustyline::history::{History, SearchDirection, SearchResult};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Arc;
+use std::rc::Rc;
 
 use crate::history::History as SqliteHistory;
 
@@ -20,7 +20,7 @@ const BATCH_SIZE: usize = 100;
 /// as the user navigates backwards through history.
 pub struct SqliteRustylineHistory {
     /// The underlying SQLite history store
-    db: Arc<SqliteHistory>,
+    db: Rc<SqliteHistory>,
     /// Total number of entries in the database
     total_count: RefCell<usize>,
     /// Cached entries: index -> command
@@ -35,13 +35,12 @@ pub struct SqliteRustylineHistory {
 impl SqliteRustylineHistory {
     /// Create a new SQLite-backed history.
     pub fn open(path: &Path) -> Result<Self, String> {
-        let db = SqliteHistory::open(path)
-            .map_err(|e| e.to_string())?;
+        let db = SqliteHistory::open(path).map_err(|e| e.to_string())?;
 
         let total = db.count().unwrap_or(0) as usize;
 
         Ok(Self {
-            db: Arc::new(db),
+            db: Rc::new(db),
             total_count: RefCell::new(total),
             cache: RefCell::new(HashMap::new()),
             loaded_count: RefCell::new(0),
@@ -85,7 +84,11 @@ impl SqliteRustylineHistory {
 }
 
 impl History for SqliteRustylineHistory {
-    fn get(&self, index: usize, _dir: SearchDirection) -> Result<Option<SearchResult<'_>>, rustyline::error::ReadlineError> {
+    fn get(
+        &self,
+        index: usize,
+        _dir: SearchDirection,
+    ) -> Result<Option<SearchResult<'_>>, rustyline::error::ReadlineError> {
         self.ensure_loaded(index);
 
         let session_entries = self.session_entries.borrow();
@@ -172,23 +175,21 @@ impl History for SqliteRustylineHistory {
         dir: SearchDirection,
     ) -> Result<Option<SearchResult<'_>>, rustyline::error::ReadlineError> {
         // Use SQLite's search capability for Ctrl+R
-        if let Ok(results) = self.db.search(term, 100) {
-            if !results.is_empty() {
-                // Find the entry and return its position
-                for (i, entry) in results.iter().enumerate() {
-                    let idx = match dir {
-                        SearchDirection::Forward => start + i,
-                        SearchDirection::Reverse => {
-                            if start >= i { start - i } else { 0 }
-                        }
-                    };
-                    if entry.contains(term) {
-                        return Ok(Some(SearchResult {
-                            entry: entry.clone().into(),
-                            idx,
-                            pos: entry.find(term).unwrap_or(0),
-                        }));
-                    }
+        if let Ok(results) = self.db.search(term, 100)
+            && !results.is_empty()
+        {
+            // Find the entry and return its position
+            for (i, entry) in results.iter().enumerate() {
+                let idx = match dir {
+                    SearchDirection::Forward => start + i,
+                    SearchDirection::Reverse => start.saturating_sub(i),
+                };
+                if entry.contains(term) {
+                    return Ok(Some(SearchResult {
+                        entry: entry.clone().into(),
+                        idx,
+                        pos: entry.find(term).unwrap_or(0),
+                    }));
                 }
             }
         }
@@ -214,14 +215,14 @@ impl History for SqliteRustylineHistory {
         };
 
         for idx in range {
-            if let Ok(Some(result)) = self.get(idx, dir) {
-                if result.entry.starts_with(term) {
-                    return Ok(Some(SearchResult {
-                        entry: result.entry,
-                        idx,
-                        pos: 0,
-                    }));
-                }
+            if let Ok(Some(result)) = self.get(idx, dir)
+                && result.entry.starts_with(term)
+            {
+                return Ok(Some(SearchResult {
+                    entry: result.entry,
+                    idx,
+                    pos: 0,
+                }));
             }
         }
 

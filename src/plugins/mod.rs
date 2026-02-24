@@ -49,9 +49,7 @@ pub enum VariableProvider {
         cache: Option<String>,
     },
     /// Variable provided internally by nosh.
-    Internal {
-        source: String,
-    },
+    Internal { source: String },
 }
 
 /// Parse a duration string like "100ms", "1s", "5m", "1h".
@@ -60,7 +58,9 @@ pub fn parse_duration(s: &str) -> Option<Duration> {
     let s = s.trim();
 
     // Try to find where the number ends and unit begins
-    let num_end = s.find(|c: char| !c.is_ascii_digit() && c != '.').unwrap_or(s.len());
+    let num_end = s
+        .find(|c: char| !c.is_ascii_digit() && c != '.')
+        .unwrap_or(s.len());
     let (num_str, unit) = s.split_at(num_end);
 
     let num: f64 = num_str.parse().ok()?;
@@ -98,4 +98,3 @@ impl CacheDuration {
         }
     }
 }
-
