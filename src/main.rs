@@ -1010,16 +1010,17 @@ description = "Show version"
                 let current = env!("CARGO_PKG_VERSION");
                 let latest = (|| -> Result<String, Box<dyn std::error::Error>> {
                     let output = std::process::Command::new("curl")
-                        .args(["-fsSL", "https://noshell.dev/version.json"])
+                        .args(["-fsSL", "-H", "Accept: application/vnd.github.v3+json",
+                               "https://api.github.com/repos/TryNosh/nosh/releases/latest"])
                         .output()?;
                     if !output.status.success() {
                         return Err("Failed to fetch version info".into());
                     }
                     let json: serde_json::Value = serde_json::from_slice(&output.stdout)?;
-                    json["version"]
+                    json["tag_name"]
                         .as_str()
-                        .map(|s| s.to_string())
-                        .ok_or_else(|| "Missing version field".into())
+                        .map(|s| s.strip_prefix('v').unwrap_or(s).to_string())
+                        .ok_or_else(|| "Missing tag_name field".into())
                 })();
 
                 match latest {
@@ -1039,7 +1040,7 @@ description = "Show version"
                         if answer.is_empty() || answer == "y" || answer == "yes" {
                             println!("\nDownloading and installing...\n");
                             let status = std::process::Command::new("sh")
-                                .args(["-c", "curl -fsSL https://noshell.dev/install.sh | sh"])
+                                .args(["-c", "curl -fsSL https://raw.githubusercontent.com/TryNosh/nosh/main/install.sh | sh"])
                                 .status();
 
                             match status {
@@ -1053,7 +1054,7 @@ description = "Show version"
                                     eprintln!("Failed to restart: {err}");
                                 }
                                 _ => {
-                                    eprintln!("Installation failed. Try manually: curl -fsSL https://noshell.dev/install.sh | sh");
+                                    eprintln!("Installation failed. Try manually: curl -fsSL https://raw.githubusercontent.com/TryNosh/nosh/main/install.sh | sh");
                                 }
                             }
                         } else {

@@ -6,7 +6,7 @@
 
 set -e
 
-BASE_URL="https://noshell.dev"
+GITHUB_REPO="TryNosh/nosh"
 INSTALL_DIR="${NOSH_INSTALL_DIR:-$HOME/.local/bin}"
 
 # Colors (disabled if not a terminal)
@@ -71,6 +71,12 @@ check_deps() {
     done
 }
 
+# Get latest release tag from GitHub API
+get_latest_version() {
+    curl -fsSL "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" \
+        | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p'
+}
+
 # Main installation
 main() {
     printf "\n"
@@ -86,7 +92,6 @@ main() {
     info "Detected OS: $OS, Architecture: $ARCH"
 
     # Construct download URL
-    # Format: nosh-{arch}-{os}.tar.gz
     case "$OS" in
         macos)
             TARGET="${ARCH}-apple-darwin"
@@ -99,8 +104,15 @@ main() {
             ;;
     esac
 
+    TAG=$(get_latest_version)
+    if [ -z "$TAG" ]; then
+        error "Failed to determine latest version from GitHub"
+    fi
+
+    info "Latest version: $TAG"
+
     ARCHIVE_NAME="nosh-${TARGET}.tar.gz"
-    DOWNLOAD_URL="${BASE_URL}/releases/${ARCHIVE_NAME}"
+    DOWNLOAD_URL="https://github.com/${GITHUB_REPO}/releases/download/${TAG}/${ARCHIVE_NAME}"
 
     # Create temp directory
     TMP_DIR=$(mktemp -d)
