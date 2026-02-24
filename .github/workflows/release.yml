@@ -10,39 +10,56 @@ env:
   NOSH_CLOUD_URL: https://noshell.dev/api
 
 jobs:
-  build-linux:
+  build-linux-x86_64:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        target:
-          - x86_64-unknown-linux-gnu
-          - aarch64-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build
+        run: cargo build --release --target x86_64-unknown-linux-gnu
+
+      - name: Create archive
+        run: |
+          tar -czf nosh-x86_64-unknown-linux-gnu.tar.gz -C target/x86_64-unknown-linux-gnu/release nosh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nosh-x86_64-unknown-linux-gnu
+          path: nosh-x86_64-unknown-linux-gnu.tar.gz
+
+  build-linux-aarch64:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: aarch64-unknown-linux-gnu
 
-      - name: Install zig
-        uses: goto-bus-stop/setup-zig@v2
-
-      - name: Install cargo-zigbuild
-        run: cargo install cargo-zigbuild
+      - name: Install cross-compilation toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
       - name: Build
-        run: cargo zigbuild --release --target ${{ matrix.target }}
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+        run: cargo build --release --target aarch64-unknown-linux-gnu
 
       - name: Create archive
         run: |
-          tar -czf nosh-${{ matrix.target }}.tar.gz -C target/${{ matrix.target }}/release nosh
+          tar -czf nosh-aarch64-unknown-linux-gnu.tar.gz -C target/aarch64-unknown-linux-gnu/release nosh
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nosh-${{ matrix.target }}
-          path: nosh-${{ matrix.target }}.tar.gz
+          name: nosh-aarch64-unknown-linux-gnu
+          path: nosh-aarch64-unknown-linux-gnu.tar.gz
 
   build-macos:
     runs-on: macos-latest
@@ -111,7 +128,7 @@ jobs:
           path: nosh-${{ matrix.target }}.tar.gz
 
   release:
-    needs: [build-linux, build-macos]
+    needs: [build-linux-x86_64, build-linux-aarch64, build-macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
