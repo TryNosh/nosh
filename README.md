@@ -2,53 +2,49 @@
 
 The shell that understands you.
 
-nosh is a modern shell with built-in AI assistance, a powerful plugin system, and a customizable prompt.
+nosh is a fast, native shell with built-in AI assistance, a plugin system, and a customizable prompt. Type commands normally or describe what you want in plain English — nosh translates it to the right command.
 
 ## Installation
-
-### Quick Install (Recommended)
 
 ```sh
 curl -fsSL https://noshell.dev/install.sh | sh
 ```
 
-### From Source
+Or build from source:
 
 ```sh
 cargo install --path .
 ```
 
-## Features
-
-- **AI-powered completions** - Type naturally and let AI help translate to commands
-- **Plugin system** - Extend your prompt with plugins for git, languages, weather, and more
-- **Themes** - Customize your prompt appearance with powerful theming
-- **Conditional colors** - Colors that change based on values (temperature, battery, git status)
-- **Theme inheritance** - Build on existing themes and customize what you need
-- **Fast** - Plugins run in parallel with configurable timeouts
-
-## Getting Started
-
-After installation, run:
+## Quick Start
 
 ```sh
 nosh
 ```
 
-To make nosh your default shell:
+Type commands directly, or prefix with `?` to use AI:
 
-```sh
-chsh -s $(which nosh)
+```
+~/projects/app ❯ ?find large files in this directory
+ ➜ find . -type f -size +100M -exec ls -lh {} \;
 ```
 
-## Documentation
+Use `??` for agentic mode — AI investigates before answering:
 
-Full documentation at [noshell.dev/docs](https://noshell.dev/docs)
+```
+~/projects/app ❯ ??why are my tests failing
+```
 
-- [Configuration](https://noshell.dev/docs/configuration)
-- [Themes](https://noshell.dev/docs/themes)
-- [Plugins](https://noshell.dev/docs/plugins)
-- [Packages](https://noshell.dev/docs/packages)
+## Features
+
+- **AI translation** — describe what you want, get the right command
+- **Agentic mode** — AI runs commands, reads output, and investigates
+- **Syntax highlighting** — commands, strings, flags, and operators are colored as you type
+- **Plugins** — extend your prompt with git status, execution time, and more
+- **Themes** — fully customizable prompt with conditional colors and inheritance
+- **Completions** — tab completion for commands, flags, paths, and arguments
+- **Fast** — native Rust, plugins run in parallel, ~2ms prompt latency
+- **Safety layer** — AI-generated commands go through risk assessment and permission checks
 
 ## Configuration
 
@@ -57,12 +53,45 @@ Configuration lives in `~/.config/nosh/config.toml`:
 ```toml
 [prompt]
 theme = "builtins/default"
+syntax_highlighting = true
 
 [ai]
-enabled = true
-provider = "mistral"
+context_size = 10
+agentic_enabled = true
+
+[history]
+load_count = 200
 ```
+
+Shell customizations go in `~/.config/nosh/init.sh`:
+
+```bash
+alias ll='ls -la'
+alias gs='git status'
+export EDITOR=vim
+```
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `?query` | Translate natural language to a command |
+| `??query` | Agentic mode — AI investigates before answering |
+| `/setup` | Sign in to nosh Cloud |
+| `/config` | Open or edit config files |
+| `/reload` | Reload config and theme |
+| `/help` | Show all commands |
+
+## Documentation
+
+Full documentation at [noshell.dev/docs](https://noshell.dev/docs)
+
+- [Configuration](https://noshell.dev/docs/configuration)
+- [Themes](https://noshell.dev/docs/themes)
+- [Plugins](https://noshell.dev/docs/plugins)
+- [Completions](https://noshell.dev/docs/completions)
+- [Packages](https://noshell.dev/docs/packages)
 
 ## License
 
-MIT
+Apache 2.0 — see [LICENSE](LICENSE) for details.

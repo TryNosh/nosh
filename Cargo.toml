@@ -6,6 +6,7 @@ name = "nosh"
 version = "1.4.1"
 edition = "2024"
 description = "Natural language shell powered by AI"
+license = "Apache-2.0"
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
