@@ -167,19 +167,18 @@ fn complete_files(prefix: &str, dirs_only: bool) -> Vec<Completion> {
                     continue;
                 }
                 // Build completion text (same logic as prefix match)
-                let mut completion_text = if prefix.ends_with('/')
-                    || prefix.ends_with(std::path::MAIN_SEPARATOR)
-                {
-                    format!("{}{}", prefix, name)
-                } else if let Some(parent) = Path::new(prefix).parent() {
-                    if parent == Path::new("") {
-                        name.clone()
+                let mut completion_text =
+                    if prefix.ends_with('/') || prefix.ends_with(std::path::MAIN_SEPARATOR) {
+                        format!("{}{}", prefix, name)
+                    } else if let Some(parent) = Path::new(prefix).parent() {
+                        if parent == Path::new("") {
+                            name.clone()
+                        } else {
+                            format!("{}/{}", parent.display(), name)
+                        }
                     } else {
-                        format!("{}/{}", parent.display(), name)
-                    }
-                } else {
-                    name.clone()
-                };
+                        name.clone()
+                    };
                 if is_dir && !completion_text.ends_with('/') {
                     completion_text.push('/');
                 }
@@ -206,10 +205,10 @@ fn expand_tilde(path: &Path) -> PathBuf {
 
 /// Expand ~ to home directory in a string (for glob patterns).
 fn expand_tilde_str(s: &str) -> String {
-    if s.starts_with('~') {
-        if let Some(home) = dirs::home_dir() {
-            return format!("{}{}", home.display(), &s[1..]);
-        }
+    if let Some(rest) = s.strip_prefix('~')
+        && let Some(home) = dirs::home_dir()
+    {
+        return format!("{}{}", home.display(), rest);
     }
     s.to_string()
 }
@@ -226,12 +225,12 @@ fn complete_glob(pattern: &str, dirs_only: bool) -> Vec<Completion> {
             }
             let mut text = entry.to_string_lossy().to_string();
             // Restore tilde prefix if pattern started with ~
-            if pattern.starts_with('~') {
-                if let Some(home) = dirs::home_dir() {
-                    let home_str = home.to_string_lossy();
-                    if text.starts_with(home_str.as_ref()) {
-                        text = format!("~{}", &text[home_str.len()..]);
-                    }
+            if pattern.starts_with('~')
+                && let Some(home) = dirs::home_dir()
+            {
+                let home_str = home.to_string_lossy();
+                if text.starts_with(home_str.as_ref()) {
+                    text = format!("~{}", &text[home_str.len()..]);
                 }
             }
             if is_dir && !text.ends_with('/') {
