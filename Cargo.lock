@@ -1703,7 +1703,7 @@ checksum = "f5438dd2b2ff4c6df6e1ce22d825ed2fa93ee2922235cc45186991717f0a892d"
 
 [[package]]
 name = "nosh"
-version = "1.5.1"
+version = "1.5.2"
 dependencies = [
  "anyhow",
  "brush-builtins",
@@ -1711,6 +1711,7 @@ dependencies = [
  "crossterm 0.28.1",
  "dialoguer",
  "dirs",
+ "glob",
  "hostname",
  "indicatif",
  "libc",

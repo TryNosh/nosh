@@ -67,6 +67,11 @@ impl BuiltinCompleter {
 
 /// Complete file or directory paths.
 fn complete_files(prefix: &str, dirs_only: bool) -> Vec<Completion> {
+    // Glob expansion: if prefix contains glob chars, expand pattern
+    if prefix.contains('*') || prefix.contains('?') || prefix.contains('[') {
+        return complete_glob(prefix, dirs_only);
+    }
+
     let mut completions = Vec::new();
 
     // Determine the directory and file prefix to search
@@ -145,6 +150,45 @@ fn complete_files(prefix: &str, dirs_only: bool) -> Vec<Completion> {
         }
     }
 
+    // Substring fallback: if prefix match found nothing, try contains
+    if completions.is_empty() && !file_prefix.is_empty() {
+        let lower_prefix = file_prefix.to_lowercase();
+        if let Ok(entries) = fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.starts_with('.') && !file_prefix.starts_with('.') {
+                    continue;
+                }
+                if !name.to_lowercase().contains(&lower_prefix) {
+                    continue;
+                }
+                let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+                if dirs_only && !is_dir {
+                    continue;
+                }
+                // Build completion text (same logic as prefix match)
+                let mut completion_text = if prefix.ends_with('/')
+                    || prefix.ends_with(std::path::MAIN_SEPARATOR)
+                {
+                    format!("{}{}", prefix, name)
+                } else if let Some(parent) = Path::new(prefix).parent() {
+                    if parent == Path::new("") {
+                        name.clone()
+                    } else {
+                        format!("{}/{}", parent.display(), name)
+                    }
+                } else {
+                    name.clone()
+                };
+                if is_dir && !completion_text.ends_with('/') {
+                    completion_text.push('/');
+                }
+                let desc = if is_dir { "directory" } else { "file" };
+                completions.push(Completion::new(completion_text).with_description(desc));
+            }
+        }
+    }
+
     completions.sort_by(|a, b| a.text.cmp(&b.text));
     completions
 }
@@ -158,6 +202,47 @@ fn expand_tilde(path: &Path) -> PathBuf {
         return home.join(rest);
     }
     path.to_path_buf()
+}
+
+/// Expand ~ to home directory in a string (for glob patterns).
+fn expand_tilde_str(s: &str) -> String {
+    if s.starts_with('~') {
+        if let Some(home) = dirs::home_dir() {
+            return format!("{}{}", home.display(), &s[1..]);
+        }
+    }
+    s.to_string()
+}
+
+/// Complete files matching a glob pattern.
+fn complete_glob(pattern: &str, dirs_only: bool) -> Vec<Completion> {
+    let expanded = expand_tilde_str(pattern);
+    let mut completions = Vec::new();
+    if let Ok(paths) = glob::glob(&expanded) {
+        for entry in paths.flatten() {
+            let is_dir = entry.is_dir();
+            if dirs_only && !is_dir {
+                continue;
+            }
+            let mut text = entry.to_string_lossy().to_string();
+            // Restore tilde prefix if pattern started with ~
+            if pattern.starts_with('~') {
+                if let Some(home) = dirs::home_dir() {
+                    let home_str = home.to_string_lossy();
+                    if text.starts_with(home_str.as_ref()) {
+                        text = format!("~{}", &text[home_str.len()..]);
+                    }
+                }
+            }
+            if is_dir && !text.ends_with('/') {
+                text.push('/');
+            }
+            let desc = if is_dir { "directory" } else { "file" };
+            completions.push(Completion::new(text).with_description(desc));
+        }
+    }
+    completions.sort_by(|a, b| a.text.cmp(&b.text));
+    completions
 }
 
 /// Complete executable commands from PATH.
@@ -430,5 +515,57 @@ mod tests {
     fn test_complete_signals() {
         let completions = complete_signals("SIGK");
         assert!(completions.iter().any(|c| c.text == "SIGKILL"));
+    }
+
+    #[test]
+    fn test_complete_files_substring_fallback() {
+        use std::fs;
+
+        let tmp = std::env::temp_dir().join("nosh_test_substring");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("my-report-2024.txt"), "").unwrap();
+        fs::write(tmp.join("another-file.txt"), "").unwrap();
+
+        // Prefix "report" matches nothing via starts_with, but substring finds "my-report-2024.txt"
+        let prefix = format!("{}/report", tmp.display());
+        let completions = complete_files(&prefix, false);
+        assert_eq!(completions.len(), 1);
+        assert!(completions[0].text.contains("my-report-2024.txt"));
+
+        // Prefix "my-" matches via starts_with (not substring fallback)
+        let prefix = format!("{}/my-", tmp.display());
+        let completions = complete_files(&prefix, false);
+        assert_eq!(completions.len(), 1);
+        assert!(completions[0].text.contains("my-report-2024.txt"));
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_complete_glob_expansion() {
+        use std::fs;
+
+        let tmp = std::env::temp_dir().join("nosh_test_glob");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("alpha.txt"), "").unwrap();
+        fs::write(tmp.join("beta.txt"), "").unwrap();
+        fs::write(tmp.join("gamma.rs"), "").unwrap();
+
+        // Glob *.txt should match two files
+        let pattern = format!("{}/*.txt", tmp.display());
+        let completions = complete_files(&pattern, false);
+        assert_eq!(completions.len(), 2);
+        assert!(completions.iter().any(|c| c.text.contains("alpha.txt")));
+        assert!(completions.iter().any(|c| c.text.contains("beta.txt")));
+
+        // Glob *.rs should match one file
+        let pattern = format!("{}/*.rs", tmp.display());
+        let completions = complete_files(&pattern, false);
+        assert_eq!(completions.len(), 1);
+        assert!(completions[0].text.contains("gamma.rs"));
+
+        let _ = fs::remove_dir_all(&tmp);
     }
 }
