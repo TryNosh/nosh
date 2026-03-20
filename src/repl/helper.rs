@@ -130,7 +130,8 @@ impl rustyline::completion::Candidate for NoshCandidate {
 
 /// Available slash commands with descriptions.
 const SLASH_COMMANDS: &[(&str, &str)] = &[
-    ("/setup", "Run setup wizard to sign in"),
+    ("/login", "Sign in to Nosh Cloud"),
+    ("/setup", "Run first-time setup wizard"),
     ("/usage", "Show usage, balance, manage subscription"),
     ("/buy", "Buy tokens or subscribe to a plan"),
     ("/config", "Open or edit config files"),

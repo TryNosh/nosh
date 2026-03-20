@@ -244,6 +244,11 @@ fn save_cloud_credentials(email: &str, token: &str) -> Result<()> {
     Ok(())
 }
 
+/// Run just the login flow (no setup wizard).
+pub async fn run_login() -> Result<()> {
+    setup_cloud().await
+}
+
 pub fn needs_onboarding(creds: &Credentials) -> bool {
     // Skip if already authenticated
     if creds.is_authenticated() {

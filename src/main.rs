@@ -160,7 +160,7 @@ use auth::Credentials;
 use config::Config;
 use exec::ShellSession;
 use indicatif::{ProgressBar, ProgressStyle};
-use onboarding::{OnboardingChoice, needs_onboarding, run_onboarding};
+use onboarding::{OnboardingChoice, needs_onboarding, run_login, run_onboarding};
 use repl::{ReadlineResult, Repl};
 use safety::{PermissionChoice, PermissionStore, RiskLevel, parse_command, prompt_for_permission};
 
@@ -302,9 +302,22 @@ async fn main() -> Result<()> {
                 }
                 continue;
             }
+            ReadlineResult::Line(line) if line == "/login" => {
+                match run_login().await {
+                    Ok(()) => {
+                        creds = Credentials::load().unwrap_or_default();
+                        println!("\nSigned in successfully!");
+                    }
+                    Err(e) => {
+                        eprintln!("Login failed: {}", e);
+                    }
+                }
+                continue;
+            }
             ReadlineResult::Line(line) if line == "/help" => {
                 println!("\nBuilt-in commands:");
-                println!("  /setup              Run setup wizard to sign in");
+                println!("  /login              Sign in to Nosh Cloud");
+                println!("  /setup              Run first-time setup wizard");
                 println!("  /usage              Show usage, balance, and manage subscription");
                 println!("  /buy                Buy tokens or subscribe to a plan");
                 println!("  /config             Open or edit config files");
@@ -808,7 +821,7 @@ description = "Show version"
                 let token = match &creds.token {
                     Some(t) => t,
                     None => {
-                        println!("Not authenticated. Run /setup to sign in.");
+                        println!("Not signed in. Run /login to sign in.");
                         continue;
                     }
                 };
@@ -956,7 +969,7 @@ description = "Show version"
                 let token = match &creds.token {
                     Some(t) => t,
                     None => {
-                        println!("Not authenticated. Run /setup to sign in.");
+                        println!("Not signed in. Run /login to sign in.");
                         continue;
                     }
                 };
@@ -1272,7 +1285,7 @@ description = "Show version"
                 let token = match &creds.token {
                     Some(t) => t.clone(),
                     None => {
-                        eprintln!("Not authenticated. Run /setup to sign in.");
+                        eprintln!("Not signed in. Run /login to sign in.");
                         continue;
                     }
                 };
@@ -1473,7 +1486,7 @@ description = "Show version"
                         }
                     }
                 } else {
-                    Err(anyhow::anyhow!("Not authenticated. Run /setup to sign in."))
+                    Err(anyhow::anyhow!("Not signed in. Run /login to sign in."))
                 };
 
                 spinner.finish_and_clear();

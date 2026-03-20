@@ -1,6 +1,7 @@
 use anyhow::{Result, anyhow};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
 
 use super::agentic::AgenticStep;
 use super::context::ConversationContext;
@@ -126,7 +127,7 @@ struct AgenticResponse {
 pub struct CloudClient {
     client: Client,
     base_url: String,
-    token: String,
+    token: RefCell<String>,
 }
 
 impl CloudClient {
@@ -134,8 +135,47 @@ impl CloudClient {
         Self {
             client: Client::new(),
             base_url: crate::config::cloud_url(),
-            token: token.to_string(),
+            token: RefCell::new(token.to_string()),
         }
+    }
+
+    fn current_token(&self) -> String {
+        self.token.borrow().clone()
+    }
+
+    /// Attempt to refresh an expired token via the server.
+    /// Returns the new token on success.
+    async fn refresh_token(&self) -> Result<String> {
+        let response = self
+            .client
+            .post(format!("{}/auth/refresh", self.base_url))
+            .header("Authorization", format!("Bearer {}", self.current_token()))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(anyhow!(
+                "Your session has expired. Please run /login to sign in again."
+            ));
+        }
+
+        #[derive(Deserialize)]
+        struct RefreshResponse {
+            token: String,
+        }
+
+        let result: RefreshResponse = response.json().await?;
+
+        // Update in-memory token
+        *self.token.borrow_mut() = result.token.clone();
+
+        // Persist to credentials file
+        if let Ok(mut creds) = crate::auth::Credentials::load() {
+            creds.token = Some(result.token.clone());
+            let _ = creds.save();
+        }
+
+        Ok(result.token)
     }
 
     pub async fn translate(
@@ -163,13 +203,25 @@ impl CloudClient {
             context: context_exchanges,
         };
 
-        let response = self
+        let mut response = self
             .client
             .post(format!("{}/ai/complete", self.base_url))
-            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Authorization", format!("Bearer {}", self.current_token()))
             .json(&request)
             .send()
             .await?;
+
+        // Auto-refresh on 401 and retry once
+        if response.status() == 401 {
+            self.refresh_token().await?;
+            response = self
+                .client
+                .post(format!("{}/ai/complete", self.base_url))
+                .header("Authorization", format!("Bearer {}", self.current_token()))
+                .json(&request)
+                .send()
+                .await?;
+        }
 
         let status = response.status();
 
@@ -182,7 +234,7 @@ impl CloudClient {
             let msg = error
                 .message
                 .unwrap_or_else(|| "Run /buy to get more tokens".to_string());
-            return Err(anyhow!("Out of tokens. {}", msg));
+            return Err(anyhow!("You've run out of tokens. {}", msg));
         }
 
         if status == 503 {
@@ -194,12 +246,15 @@ impl CloudClient {
             let msg = error
                 .message
                 .unwrap_or_else(|| "Subscribe for guaranteed access".to_string());
-            return Err(anyhow!("Free tier at capacity. {}", msg));
+            return Err(anyhow!("The free tier is at capacity right now. {}", msg));
         }
 
         if !status.is_success() {
             let error: ErrorResponse = response.json().await?;
-            return Err(anyhow!("Cloud error: {}", error.error));
+            return Err(anyhow!(
+                "Something went wrong ({}). Please try again.",
+                error.error
+            ));
         }
 
         let result: CompleteResponse = response.json().await?;
@@ -210,12 +265,14 @@ impl CloudClient {
         let response = self
             .client
             .get(format!("{}/account/tokens", self.base_url))
-            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Authorization", format!("Bearer {}", self.current_token()))
             .send()
             .await?;
 
         if !response.status().is_success() {
-            return Err(anyhow!("Failed to get token balance"));
+            return Err(anyhow!(
+                "Couldn't check your token balance. Please try again."
+            ));
         }
 
         let result: Usage = response.json().await?;
@@ -226,14 +283,14 @@ impl CloudClient {
         let response = self
             .client
             .post(format!("{}/billing/buy-tokens", self.base_url))
-            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Authorization", format!("Bearer {}", self.current_token()))
             .json(&serde_json::json!({ "quantity": 1 }))
             .send()
             .await?;
 
         if !response.status().is_success() {
             let error: ErrorResponse = response.json().await?;
-            return Err(anyhow!("Failed to get checkout URL: {}", error.error));
+            return Err(anyhow!("Couldn't start checkout: {}", error.error));
         }
 
         #[derive(Deserialize)]
@@ -249,7 +306,7 @@ impl CloudClient {
         let response = self
             .client
             .post(format!("{}/billing/subscribe", self.base_url))
-            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Authorization", format!("Bearer {}", self.current_token()))
             .json(&serde_json::json!({ "plan": plan }))
             .send()
             .await?;
@@ -272,12 +329,14 @@ impl CloudClient {
         let response = self
             .client
             .get(format!("{}/account/plan", self.base_url))
-            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Authorization", format!("Bearer {}", self.current_token()))
             .send()
             .await?;
 
         if !response.status().is_success() {
-            return Err(anyhow!("Failed to get plan info"));
+            return Err(anyhow!(
+                "Couldn't retrieve your plan details. Please try again."
+            ));
         }
 
         let result: PlanInfo = response.json().await?;
@@ -288,7 +347,7 @@ impl CloudClient {
         let response = self
             .client
             .post(format!("{}/billing/cancel", self.base_url))
-            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Authorization", format!("Bearer {}", self.current_token()))
             .send()
             .await?;
 
@@ -304,7 +363,7 @@ impl CloudClient {
         let response = self
             .client
             .post(format!("{}/billing/reactivate", self.base_url))
-            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Authorization", format!("Bearer {}", self.current_token()))
             .send()
             .await?;
 
@@ -320,7 +379,7 @@ impl CloudClient {
         let response = self
             .client
             .post(format!("{}/billing/portal", self.base_url))
-            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Authorization", format!("Bearer {}", self.current_token()))
             .send()
             .await?;
 
@@ -378,13 +437,25 @@ impl CloudClient {
             executions: exec_list,
         };
 
-        let response = self
+        let mut response = self
             .client
             .post(format!("{}/ai/agentic", self.base_url))
-            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Authorization", format!("Bearer {}", self.current_token()))
             .json(&request)
             .send()
             .await?;
+
+        // Auto-refresh on 401 and retry once
+        if response.status() == 401 {
+            self.refresh_token().await?;
+            response = self
+                .client
+                .post(format!("{}/ai/agentic", self.base_url))
+                .header("Authorization", format!("Bearer {}", self.current_token()))
+                .json(&request)
+                .send()
+                .await?;
+        }
 
         let status = response.status();
 
@@ -398,7 +469,7 @@ impl CloudClient {
                 .message
                 .unwrap_or_else(|| "Run /buy to get more tokens".to_string());
             return Ok(AgenticStep::Error {
-                message: format!("Out of tokens. {}", msg),
+                message: format!("You've run out of tokens. {}", msg),
             });
         }
 
@@ -420,7 +491,7 @@ impl CloudClient {
         if !status.is_success() {
             let error: ErrorResponse = response.json().await?;
             return Ok(AgenticStep::Error {
-                message: error.error,
+                message: format!("Something went wrong ({}). Please try again.", error.error),
             });
         }
 
@@ -435,7 +506,9 @@ impl CloudClient {
                     })
                 } else {
                     Ok(AgenticStep::Error {
-                        message: "AI requested run_command but no command provided".to_string(),
+                        message:
+                            "Something went wrong — no command was returned. Please try again."
+                                .to_string(),
                     })
                 }
             }
@@ -443,7 +516,10 @@ impl CloudClient {
                 message: result.message.unwrap_or_default(),
             }),
             other => Ok(AgenticStep::Error {
-                message: format!("Unknown action: {}", other),
+                message: format!(
+                    "Unexpected response from server ({}). Please try again.",
+                    other
+                ),
             }),
         }
     }
