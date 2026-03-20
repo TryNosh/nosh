@@ -221,7 +221,7 @@ impl History for SqliteRustylineHistory {
                 return Ok(Some(SearchResult {
                     entry: result.entry,
                     idx,
-                    pos: 0,
+                    pos: term.len(),
                 }));
             }
         }
