@@ -1117,7 +1117,7 @@ description = "Show version"
                         if answer.is_empty() || answer == "y" || answer == "yes" {
                             println!("\nDownloading and installing...\n");
                             let status = std::process::Command::new("sh")
-                                .args(["-c", "curl -fsSL https://raw.githubusercontent.com/TryNosh/nosh/main/install.sh | sh"])
+                                .args(["-c", "curl -fsSL https://raw.githubusercontent.com/TryNosh/nosh/master/install.sh | sh"])
                                 .status();
 
                             match status {
@@ -1133,7 +1133,7 @@ description = "Show version"
                                 }
                                 _ => {
                                     eprintln!(
-                                        "Installation failed. Try manually: curl -fsSL https://raw.githubusercontent.com/TryNosh/nosh/main/install.sh | sh"
+                                        "Installation failed. Try manually: curl -fsSL https://raw.githubusercontent.com/TryNosh/nosh/master/install.sh | sh"
                                     );
                                 }
                             }
