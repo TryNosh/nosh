@@ -1847,7 +1847,7 @@ checksum = "a0769f77950d14beb4fe8e0707b7c7cc6ea39110e9289e2c2346a7bb4ee5af74"
 
 [[package]]
 name = "nosh"
-version = "1.6.0"
+version = "1.6.1"
 dependencies = [
  "anyhow",
  "brush-builtins",
