@@ -6,7 +6,7 @@ use std::path::Path;
 fn main() {
     let dir = env::args()
         .nth(1)
-        .map(|s| std::path::PathBuf::from(s))
+        .map(std::path::PathBuf::from)
         .unwrap_or_else(|| env::current_dir().expect("Failed to get current directory"));
 
     let ctx = nosh_context::detect(Path::new(&dir));

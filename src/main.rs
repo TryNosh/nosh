@@ -942,7 +942,7 @@ description = "Show version"
                                     );
 
                                     let confirm = Select::with_theme(&ColorfulTheme::default())
-                                        .items(&["No, keep my subscription", "Yes, cancel"])
+                                        .items(["No, keep my subscription", "Yes, cancel"])
                                         .default(0)
                                         .interact_opt();
 
@@ -1245,7 +1245,7 @@ description = "Show version"
                     // Confirm removal
                     let confirm = Select::with_theme(&ColorfulTheme::default())
                         .with_prompt(format!("Remove package '{}'?", name))
-                        .items(&["No, keep it", "Yes, remove"])
+                        .items(["No, keep it", "Yes, remove"])
                         .default(0)
                         .interact_opt();
 
