@@ -85,8 +85,16 @@ pub fn set_title_to_cwd() {
                 path_str
             };
             // Trim to last 30 chars if too long
-            if display.len() > 30 {
-                format!("…{}", &display[display.len() - 29..])
+            if display.chars().count() > 30 {
+                let tail: String = display
+                    .chars()
+                    .rev()
+                    .take(29)
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .collect();
+                format!("…{tail}")
             } else {
                 display
             }
@@ -107,8 +115,8 @@ pub fn set_title_to_command(command: &str) {
     let cmd_name = command.split_whitespace().next().unwrap_or(command).trim();
 
     // Trim if too long
-    let title = if cmd_name.len() > 30 {
-        format!("{}…", &cmd_name[..29])
+    let title = if cmd_name.chars().count() > 30 {
+        format!("{}…", cmd_name.chars().take(29).collect::<String>())
     } else {
         cmd_name.to_string()
     };
@@ -118,6 +126,7 @@ pub fn set_title_to_command(command: &str) {
 
 /// Set the terminal title using escape sequences.
 fn set_title(title: &str) {
+    let title: String = title.chars().filter(|c| !c.is_control()).collect();
     // OSC 0 sets both window title and icon name
     // Format: ESC ] 0 ; <title> BEL
     let _ = write!(std::io::stdout(), "\x1b]0;{}\x07", title);

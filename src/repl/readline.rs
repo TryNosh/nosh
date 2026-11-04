@@ -30,12 +30,13 @@ pub struct Repl {
     last_command_start: Option<Instant>,
     #[allow(dead_code)]
     completion_manager: Rc<CompletionManager>,
+    history_load_count: usize,
 }
 
 impl Repl {
     pub fn new(
         theme_name: &str,
-        _history_load_count: Option<usize>,
+        history_load_count: Option<usize>,
         syntax_highlighting: bool,
     ) -> Result<Self> {
         // Create SQLite-backed history with lazy loading
@@ -77,6 +78,7 @@ impl Repl {
             theme,
             last_command_start: None,
             completion_manager,
+            history_load_count: history_load_count.unwrap_or(200),
         })
     }
 
@@ -121,12 +123,14 @@ impl Repl {
 
     pub async fn readline(&mut self) -> Result<ReadlineResult> {
         let prompt = self.prompt().await;
+        self.editor.history_mut().refresh(self.history_load_count)?;
         match self.editor.readline(&prompt) {
             Ok(line) => {
-                let line = line.trim().to_string();
-                if !line.is_empty() {
+                if !line.trim().is_empty() {
                     // Add to history (SQLite handles persistence)
-                    let _ = self.editor.history_mut().add(&line);
+                    if let Err(error) = self.editor.history_mut().add(&line) {
+                        eprintln!("Could not save command history: {error}");
+                    }
                 }
                 Ok(ReadlineResult::Line(line))
             }

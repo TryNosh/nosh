@@ -496,6 +496,13 @@ impl NoshHelper {
             }
 
             // Words (commands, flags, arguments)
+            // A literal '#' within a word and a trailing '$' must advance too.
+            // They are neither comments nor parameter expansions here.
+            if c == b'#' || c == b'$' {
+                result.push(c as char);
+                i += 1;
+                continue;
+            }
             let start = i;
             while i < len
                 && bytes[i] != b' '
@@ -581,6 +588,25 @@ fn find_word_start(line: &str, pos: usize) -> usize {
 mod tests {
     use super::*;
     use rustyline::completion::Candidate;
+
+    #[test]
+    fn literal_hash_and_trailing_dollar_do_not_hang() {
+        for line in ["echo $", "echo a#b", "printf '%s' '$'", "echo café#🍜"] {
+            let (sender, receiver) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let helper = NoshHelper::new(Rc::new(CompletionManager::new()), true);
+                sender
+                    .send(helper.highlight(line, line.len()).into_owned())
+                    .ok();
+            });
+            assert!(
+                receiver
+                    .recv_timeout(std::time::Duration::from_secs(2))
+                    .is_ok(),
+                "highlighting hung for {line:?}"
+            );
+        }
+    }
 
     #[test]
     fn test_find_word_start() {

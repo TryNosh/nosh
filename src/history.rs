@@ -4,7 +4,7 @@
 //! to share history in real-time without overwriting each other's entries.
 
 use anyhow::Result;
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 use std::path::Path;
 
 /// SQLite-backed command history.
@@ -69,10 +69,11 @@ impl History {
     }
 
     /// Get the N most recent commands, newest first.
+    #[cfg(test)]
     pub fn recent(&self, limit: usize) -> Result<Vec<String>> {
         let mut stmt = self.conn.prepare(
-            "SELECT DISTINCT command FROM history
-             ORDER BY timestamp DESC, id DESC
+            "SELECT command FROM history GROUP BY command
+             ORDER BY MAX(id) DESC
              LIMIT ?1",
         )?;
 
@@ -84,6 +85,7 @@ impl History {
     }
 
     /// Get commands for rustyline history (oldest first for proper navigation).
+    #[cfg(test)]
     pub fn for_readline(&self, limit: usize) -> Result<Vec<String>> {
         let mut commands = self.recent(limit)?;
         commands.reverse(); // Oldest first for readline
@@ -91,11 +93,12 @@ impl History {
     }
 
     /// Search history for commands containing the pattern.
+    #[cfg(test)]
     pub fn search(&self, pattern: &str, limit: usize) -> Result<Vec<String>> {
         let mut stmt = self.conn.prepare(
-            "SELECT DISTINCT command FROM history
+            "SELECT command FROM history
              WHERE command LIKE ?1
-             ORDER BY timestamp DESC, id DESC
+             GROUP BY command ORDER BY MAX(id) DESC
              LIMIT ?2",
         )?;
 
@@ -111,9 +114,9 @@ impl History {
     #[allow(dead_code)]
     pub fn in_directory(&self, dir: &str, limit: usize) -> Result<Vec<String>> {
         let mut stmt = self.conn.prepare(
-            "SELECT DISTINCT command FROM history
+            "SELECT command FROM history
              WHERE cwd = ?1 OR cwd LIKE ?2
-             ORDER BY timestamp DESC, id DESC
+             GROUP BY command ORDER BY MAX(id) DESC
              LIMIT ?3",
         )?;
 
@@ -125,14 +128,22 @@ impl History {
         Ok(commands)
     }
 
-    /// Get total number of unique commands in history.
-    pub fn count(&self) -> Result<i64> {
-        let count: i64 =
-            self.conn
-                .query_row("SELECT COUNT(DISTINCT command) FROM history", [], |row| {
-                    row.get(0)
-                })?;
-        Ok(count)
+    /// Stable row IDs, oldest first. Refresh only between readline operations.
+    pub fn snapshot_ids(&self) -> Result<Vec<i64>> {
+        Ok(self
+            .conn
+            .prepare("SELECT MAX(id) FROM history GROUP BY command ORDER BY MAX(id)")?
+            .query_map([], |row| row.get(0))?
+            .collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub fn entry(&self, id: i64) -> Result<Option<String>> {
+        Ok(self
+            .conn
+            .query_row("SELECT command FROM history WHERE id = ?1", [id], |row| {
+                row.get(0)
+            })
+            .optional()?)
     }
 
     /// Clear all history.
