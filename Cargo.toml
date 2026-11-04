@@ -7,7 +7,7 @@ brush-core = { path = "vendor/brush-core" }
 
 [package]
 name = "nosh"
-version = "1.5.4"
+version = "1.6.0"
 edition = "2024"
 description = "Natural language shell powered by AI"
 license = "Apache-2.0"
