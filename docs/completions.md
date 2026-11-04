@@ -1,6 +1,35 @@
 # Completion System
 
-nosh uses TOML-based completions for tab completion. Completions can be hand-written or converted from ZSH completion files.
+Tab cycles forward through all matching candidates; Shift+Tab cycles backward.
+An exact filename remains selectable alongside longer names with the same prefix.
+Directory candidates include a trailing `/`, and inserted filenames are quoted
+or escaped to preserve spaces and shell metacharacters. Inline shell hints come
+from history and do not run external completers on every keystroke.
+
+## Provider precedence
+
+1. A TOML definition for the current command wins, including when it has no
+   matches. User definitions in `~/.config/nosh/completions/` override package
+   definitions; package definitions override the embedded defaults.
+2. When there is no TOML definition, Nosh uses the embedded shell's Bash
+   programmable completion support (`complete`, `compgen`, `compopt`, and
+   `COMPREPLY`). Existing functions and registrations from init.sh are available.
+3. Bash definitions are loaded on first use from installed bash-completion
+   frameworks and completion directories, including
+   `${BASH_COMPLETION_USER_DIR:-~/.local/share/bash-completion}/completions`.
+   Nosh does not download completion scripts.
+4. Bash's basic command, variable, and filename completion supplies the fallback.
+
+Completion callbacks have a short execution deadline and bounded subprocess
+output. Timed-out callbacks are cancelled, including their process groups.
+TOML dynamic results are cached by provider command and working directory and
+invalidated when the shell's exported environment changes. `/reload` refreshes
+TOML definitions and package discovery.
+
+Zsh completions are not automatically loaded or converted. The legacy explicit
+`/convert-zsh` command remains available for simple definitions.
+
+nosh supports TOML definitions and native Bash completion for tab completion. Completions can be hand-written or converted from ZSH completion files.
 
 ## Completion Locations
 

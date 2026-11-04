@@ -22,6 +22,17 @@ cargo install --path .
 nosh
 ```
 
+Run scripts and command strings without starting the interactive UI:
+
+```sh
+nosh -c 'printf "%s\n" "$1"' nosh hello
+nosh script.sh arg1
+printf 'echo hello\n' | nosh
+```
+
+`-i` forces interactive mode, `-l` selects login startup, and `--norc` skips
+Nosh's init script. Command and script exit statuses are returned to the caller.
+
 Type commands directly, or prefix with `?` to use AI:
 
 ```
@@ -42,7 +53,7 @@ Use `??` for agentic mode — AI investigates before answering:
 - **Syntax highlighting** — commands, strings, flags, and operators are colored as you type
 - **Plugins** — extend your prompt with git status, execution time, and more
 - **Themes** — fully customizable prompt with conditional colors and inheritance
-- **Completions** — tab completion for commands, flags, paths, and arguments
+- **Completions** — Tab/Shift+Tab cycling for commands, flags, and paths; TOML definitions take priority over native Bash completion scripts
 - **Fast** — native Rust, plugins run in parallel, ~2ms prompt latency
 - **Safety layer** — AI-generated commands go through risk assessment and permission checks
 

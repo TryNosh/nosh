@@ -24,3 +24,25 @@ resolution. Upstream tracks full parse-time alias resolution at
 Regression tests live in `src/exec/shell.rs` in the Nosh crate. When upgrading
 Brush, compare this copy against the published crate and retain the patch until
 those tests pass with the upstream implementation.
+
+## Bounded embedded operations
+
+The local `process_scope` module owns process groups and shell-created Tokio
+subtasks for completion and captured AI commands. Scope cancellation terminates
+those groups and aborts subtasks; completed children unregister promptly.
+`commands.rs` and `interp.rs` propagate scope ownership into substitutions and
+background shell tasks. Interpreter command-list boundaries yield cooperatively
+so even a completion function containing a builtin-only loop can time out.
+`sys/tokio_process.rs` isolates scoped external commands into process groups and
+uses kill-on-drop.
+Scoped command substitutions also cap pipe output before collecting completion
+results, closing capped readers before waiting for their writers.
+
+`shell.rs` provides operation snapshots that preserve shell depth and commit
+successful operations while retaining the original shell's running jobs. An
+interrupted operation is discarded so unfinished function frames cannot corrupt
+the interactive session. The `bashdefault` completion option in `completion.rs`
+now invokes basic completion instead of silently producing no fallback matches.
+
+The original alias patch remains confined to `interp.rs`. Run the Nosh workspace
+tests and `python3 tests/terminal.py target/debug/nosh` after updating this copy.

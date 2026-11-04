@@ -186,3 +186,21 @@ If `~/.nosh/` exists and `~/.config/nosh/` doesn't, nosh uses `~/.nosh/` for bac
 | `command` | Run command directly |
 | `?query` | Translate natural language via AI |
 | `??query` | Agentic mode - AI investigates before answering |
+
+## Shell startup and invocation
+
+Interactive startup interprets `~/.config/nosh/init.sh` once with Nosh's embedded
+Bash-compatible shell. The stock script reads `.bashrc` for non-login shells.
+Login shells read `/etc/profile` and the first available `.bash_profile`,
+`.bash_login`, or `.profile`. Zsh startup files are not sourced by the stock
+script. An unchanged legacy stock init script is migrated automatically;
+customized init files are preserved.
+
+Scripts, `-c`, and piped standard input run without onboarding, prompts, or
+history writes. They skip interactive init files unless explicitly invoked with
+`-i` or `-l`; `--norc` skips init loading in either case. `NOSH_CONFIG_DIR` selects
+an alternate Nosh configuration directory, useful for isolated environments.
+
+History uses a stable snapshot while a line is edited and refreshes before the
+next prompt to include writes from other sessions. `history.load_count` controls
+how many recent commands are prefetched; older entries remain searchable.
