@@ -15,6 +15,18 @@ pub enum PermissionChoice {
 }
 
 pub fn prompt_for_permission(parsed: &ParsedCommand) -> io::Result<PermissionChoice> {
+    if parsed.requires_approval {
+        let allowed = Confirm::with_theme(&ColorfulTheme::default())
+            .with_prompt(format!("Run this complete command once?\n{}", parsed.raw))
+            .default(false)
+            .interact()
+            .map_err(io::Error::other)?;
+        return Ok(if allowed {
+            PermissionChoice::AllowOnce
+        } else {
+            PermissionChoice::Deny
+        });
+    }
     let mut stdout = io::stdout();
 
     // Print warning

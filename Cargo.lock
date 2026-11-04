@@ -1852,6 +1852,7 @@ dependencies = [
  "anyhow",
  "brush-builtins",
  "brush-core",
+ "brush-parser",
  "crossterm",
  "dialoguer",
  "dirs",

@@ -120,6 +120,9 @@ impl AgenticSession {
             RiskLevel::Safe => CommandPermission::Allowed,
             RiskLevel::Blocked | RiskLevel::Critical => CommandPermission::Blocked,
             _ => {
+                if parsed.requires_approval {
+                    return CommandPermission::NeedsApproval;
+                }
                 // Check if command is already allowed
                 if permissions
                     .is_command_allowed(&parsed.info.command, &parsed.info.command_pattern)

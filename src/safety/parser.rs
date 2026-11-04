@@ -1,7 +1,7 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum RiskLevel {
     Safe,     // echo, pwd, ls (no writes)
     Low,      // single file write, git operations
@@ -68,6 +68,8 @@ pub struct ParsedCommand {
     pub info: CommandInfo,
     pub risk_level: RiskLevel,
     pub risk_reason: String,
+    /// Dynamic or compound syntax cannot inherit a grant for its first word.
+    pub requires_approval: bool,
 }
 
 const DESTRUCTIVE_COMMANDS: &[&str] = &["rm", "rmdir", "mv", "unlink"];
@@ -153,6 +155,59 @@ fn normalize_path(path: &Path) -> PathBuf {
 }
 
 pub fn parse_command(raw: &str) -> ParsedCommand {
+    use brush_parser::ast::{Command, CommandPrefixOrSuffixItem};
+    let mut parsed = parse_simple(raw);
+    let mut parser =
+        brush_parser::Parser::new(std::io::BufReader::new(raw.as_bytes()), &Default::default());
+    let Ok(program) = parser.parse_program() else {
+        parsed.risk_level = RiskLevel::High;
+        parsed.risk_reason = "Shell syntax could not be analyzed".into();
+        parsed.requires_approval = true;
+        return parsed;
+    };
+    let mut count = 0;
+    for list in &program.complete_commands {
+        for item in &list.0 {
+            for (_, pipeline) in &item.0 {
+                for command in &pipeline.seq {
+                    count += 1;
+                    match command {
+                        Command::Simple(simple) => {
+                            let items = simple
+                                .prefix
+                                .iter()
+                                .flat_map(|p| &p.0)
+                                .chain(simple.suffix.iter().flat_map(|p| &p.0));
+                            let dynamic = items
+                                .clone()
+                                .any(|part| !matches!(part, CommandPrefixOrSuffixItem::Word(_)))
+                                || command.to_string().contains(['$', '`']);
+                            let part = parse_simple(&simple.to_string());
+                            if part.risk_level > parsed.risk_level {
+                                parsed.risk_level = part.risk_level;
+                                parsed.risk_reason = part.risk_reason;
+                            }
+                            parsed.info.affected_paths.extend(part.info.affected_paths);
+                            parsed.requires_approval |= dynamic;
+                        }
+                        _ => parsed.requires_approval = true,
+                    }
+                }
+            }
+        }
+    }
+    parsed.requires_approval |= count > 1;
+    if parsed.requires_approval && parsed.risk_level < RiskLevel::High {
+        parsed.risk_level = RiskLevel::High;
+        parsed.risk_reason =
+            "Compound commands, redirections, or expansions require review as a whole".into();
+    }
+    parsed.info.affected_paths.sort();
+    parsed.info.affected_paths.dedup();
+    parsed
+}
+
+fn parse_simple(raw: &str) -> ParsedCommand {
     let words = shell_words::split(raw).unwrap_or_else(|_| vec![raw.to_string()]);
 
     let (command, args) = if words.is_empty() {
@@ -171,7 +226,6 @@ pub fn parse_command(raw: &str) -> ParsedCommand {
     let affected_paths: Vec<String> = args
         .iter()
         .filter(|a| !a.starts_with('-'))
-        .filter(|a| Path::new(a).exists() || a.contains('*') || a.contains('/'))
         .map(|a| resolve_path(a))
         .collect();
 
@@ -193,6 +247,7 @@ pub fn parse_command(raw: &str) -> ParsedCommand {
         info,
         risk_level,
         risk_reason,
+        requires_approval: false,
     }
 }
 
@@ -223,6 +278,10 @@ fn extract_subcommand(command: &str, args: &[String]) -> (Option<String>, String
 }
 
 fn assess_risk(command: &str, args: &[String], info: &CommandInfo) -> (RiskLevel, String) {
+    let command = Path::new(command)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(command);
     // Check for blocked patterns
     if is_blocked(command, args) {
         return (
@@ -267,6 +326,49 @@ fn assess_risk(command: &str, args: &[String], info: &CommandInfo) -> (RiskLevel
     }
 
     // Safe commands
+    if (command == "env" && !args.is_empty())
+        || (command == "hostname" && args.iter().any(|arg| !arg.starts_with('-')))
+        || (command == "date"
+            && args
+                .iter()
+                .any(|arg| arg == "-s" || arg.starts_with("--set")))
+        || (command == "sort" && args.iter().any(|arg| arg.starts_with("--compress-program")))
+        || (command == "file" && args.iter().any(|arg| arg == "-C"))
+        || (command == "uniq" && args.iter().filter(|arg| !arg.starts_with('-')).count() > 1)
+    {
+        return (
+            RiskLevel::High,
+            "Arguments can execute commands or modify state".into(),
+        );
+    }
+    if command == "find"
+        && args.iter().any(|arg| {
+            matches!(
+                arg.as_str(),
+                "-delete"
+                    | "-exec"
+                    | "-execdir"
+                    | "-ok"
+                    | "-okdir"
+                    | "-fprint"
+                    | "-fprint0"
+                    | "-fprintf"
+                    | "-fls"
+            )
+        })
+    {
+        return (
+            RiskLevel::High,
+            "find can execute commands or write files".into(),
+        );
+    }
+    if matches!(command, "sort" | "uniq")
+        && args.iter().any(|arg| {
+            arg == "-o" || arg.starts_with("--output") || (arg.starts_with("-o") && arg.len() > 2)
+        })
+    {
+        return (RiskLevel::Low, "Writes an output file".into());
+    }
     if SAFE_COMMANDS.contains(&command) {
         return (RiskLevel::Safe, "Read-only operation".to_string());
     }
@@ -278,9 +380,16 @@ fn assess_risk(command: &str, args: &[String], info: &CommandInfo) -> (RiskLevel
 fn is_blocked(command: &str, args: &[String]) -> bool {
     // rm -rf / or rm -rf /*
     if command == "rm" {
-        let has_rf = args
-            .iter()
-            .any(|a| a.starts_with('-') && a.contains('r') && a.contains('f'));
+        let recursive = args.iter().any(|a| {
+            a == "--recursive"
+                || (a.starts_with('-')
+                    && !a.starts_with("--")
+                    && (a.contains('r') || a.contains('R')))
+        });
+        let force = args.iter().any(|a| {
+            a == "--force" || (a.starts_with('-') && !a.starts_with("--") && a.contains('f'))
+        });
+        let has_rf = recursive && force;
         let targets_root = args.iter().any(|a| a == "/" || a == "/*");
         if has_rf && targets_root {
             return true;
@@ -309,6 +418,38 @@ fn is_critical(command: &str, args: &[String]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn whole_shell_program_is_reviewed() {
+        for command in [
+            "echo ok; rm -rf /",
+            "echo ok && rm -r -f /",
+            "echo ok | /bin/rm --recursive --force /",
+        ] {
+            assert_eq!(
+                parse_command(command).risk_level,
+                RiskLevel::Blocked,
+                "{command}"
+            );
+        }
+        for command in [
+            "find . -delete",
+            "find . -exec touch file \\;",
+            "env sh -c 'touch file'",
+            "echo ok > file",
+            "echo $(touch file)",
+            "echo ok && touch file",
+            "if true; then touch file; fi",
+            "uniq input output",
+        ] {
+            assert!(
+                parse_command(command).risk_level >= RiskLevel::Low,
+                "{command}"
+            );
+        }
+        assert!(parse_command("echo hi && echo bye").requires_approval);
+        assert_eq!(parse_command("echo 'a;b'").risk_level, RiskLevel::Safe);
+    }
 
     #[test]
     fn test_safe_command() {

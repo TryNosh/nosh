@@ -1516,15 +1516,16 @@ description = "Show version"
                     RiskLevel::Critical => safety::prompt::print_critical_warning(&parsed)?,
                     _ => {
                         // Check permissions in order: global command, command+directory (checking actual paths), all-directory
-                        if permissions
-                            .is_command_allowed(&parsed.info.command, &parsed.info.command_pattern)
-                            || permissions.are_affected_paths_allowed(
+                        if !parsed.requires_approval
+                            && (permissions.is_command_allowed(
+                                &parsed.info.command,
+                                &parsed.info.command_pattern,
+                            ) || permissions.are_affected_paths_allowed(
                                 &parsed.info.command,
                                 &parsed.info.command_pattern,
                                 &parsed.info.affected_paths,
                                 &cwd,
-                            )
-                            || permissions.is_directory_allowed(&cwd)
+                            ) || permissions.is_directory_allowed(&cwd))
                         {
                             true
                         } else {
