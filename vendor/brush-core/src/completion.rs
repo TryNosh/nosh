@@ -1145,6 +1145,11 @@ impl Config {
         shell: &mut Shell<impl extensions::ShellExtensions>,
         context: Context<'_>,
     ) -> Answer {
+        // Variable names are shell syntax, even when a command has installed a
+        // programmable completion that would otherwise suppress basic lookup.
+        if let Some(answer) = try_get_variable_completions(shell, context.token_to_complete) {
+            return answer;
+        }
         // See if we can find a completion spec matching the current command.
         let mut found_spec: Option<&Spec> = None;
 

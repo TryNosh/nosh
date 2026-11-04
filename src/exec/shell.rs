@@ -216,20 +216,27 @@ impl ShellSession {
                 .set_fd(fd, brush_core::openfiles::null()?);
         }
         let scope = brush_core::process_scope::ProcessScope::new();
-        let operation = async {
-            if shell.funcs().get("_nosh_completion_loader").is_none() {
-                shell
-                    .run_string(
-                        include_str!("../completions/bash-loader.sh"),
-                        &SourceInfo::from("completion loader"),
-                        &shell.default_exec_params(),
-                    )
-                    .await?;
-            }
-            shell.complete(line, pos).await
-        };
-        let result =
-            tokio::time::timeout(Duration::from_millis(250), scope.run(operation)).await??;
+        if shell.funcs().get("_nosh_completion_loader").is_none() {
+            // Framework initialization parses many definitions on Linux. Give it
+            // its own one-time budget; individual callbacks remain short-lived.
+            tokio::time::timeout(
+                Duration::from_secs(2),
+                scope.run(shell.run_string(
+                    include_str!("../completions/bash-loader.sh"),
+                    &SourceInfo::from("completion loader"),
+                    &shell.default_exec_params(),
+                )),
+            )
+            .await??;
+            *self.shell.completion_config_mut() = shell.completion_config().clone();
+            *self.shell.funcs_mut() = shell.funcs().clone();
+            *self.shell.env_mut() = shell.env().clone();
+        }
+        let result = tokio::time::timeout(
+            Duration::from_millis(250),
+            scope.run(shell.complete(line, pos)),
+        )
+        .await??;
         *self.shell.completion_config_mut() = shell.completion_config().clone();
         *self.shell.funcs_mut() = shell.funcs().clone();
         *self.shell.env_mut() = shell.env().clone();

@@ -660,7 +660,7 @@ mod tests {
         shell
             .lock()
             .await
-            .execute_no_job_control("complete -W 'bash' auditcmd; complete -W 'beta bravo' bashcmd")
+            .execute_no_job_control("complete -W 'bash' auditcmd; complete -W 'beta bravo' bashcmd; complete -W 'unrelated' echo")
             .await
             .unwrap();
         helper.set_shell(shell);

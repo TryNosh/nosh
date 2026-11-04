@@ -1,18 +1,19 @@
 # Load only installed Bash completion definitions, on first use.
+if ! declare -p BASH_COMPLETION_VERSINFO >/dev/null 2>&1; then
+    for _nosh_framework in /usr/share/bash-completion/bash_completion /etc/bash_completion /opt/homebrew/etc/profile.d/bash_completion.sh /usr/local/etc/profile.d/bash_completion.sh; do
+        if [ -r "$_nosh_framework" ]; then
+            source "$_nosh_framework"
+            break
+        fi
+    done
+    unset _nosh_framework
+fi
+
 _nosh_completion_loader() {
     local command=${1##*/} directory candidate
     case "$command" in ''|*[!a-zA-Z0-9_+.-]*) return 1 ;; esac
-    if ! declare -p BASH_COMPLETION_VERSINFO >/dev/null 2>&1; then
-        for candidate in /usr/share/bash-completion/bash_completion /etc/bash_completion /opt/homebrew/etc/profile.d/bash_completion.sh /usr/local/etc/profile.d/bash_completion.sh; do
-            if [ -r "$candidate" ]; then
-                source "$candidate"
-                if declare -F _completion_loader >/dev/null; then
-                    _completion_loader "$command"
-                    return 124
-                fi
-                break
-            fi
-        done
+    if declare -F _completion_loader >/dev/null && _completion_loader "$command"; then
+        return 124
     fi
     for directory in "${BASH_COMPLETION_USER_DIR:-$HOME/.local/share/bash-completion}/completions" /usr/share/bash-completion/completions /opt/homebrew/share/bash-completion/completions /usr/local/share/bash-completion/completions; do
         for candidate in "$directory/$command" "$directory/$command.bash"; do

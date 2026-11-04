@@ -22,6 +22,8 @@ from history and do not run external completers on every keystroke.
 
 Completion callbacks have a short execution deadline and bounded subprocess
 output. Timed-out callbacks are cancelled, including their process groups.
+The installed Bash framework has a separate, one-time initialization budget of
+two seconds; individual completion callbacks have a 250 ms deadline.
 TOML dynamic results are cached by provider command and working directory and
 invalidated when the shell's exported environment changes. `/reload` refreshes
 TOML definitions and package discovery.

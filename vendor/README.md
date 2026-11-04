@@ -43,6 +43,8 @@ successful operations while retaining the original shell's running jobs. An
 interrupted operation is discarded so unfinished function frames cannot corrupt
 the interactive session. The `bashdefault` completion option in `completion.rs`
 now invokes basic completion instead of silently producing no fallback matches.
+Variable-name completion takes precedence over programmable registrations so an
+installed command completer cannot suppress shell variable suggestions.
 
 The original alias patch remains confined to `interp.rs`. Run the Nosh workspace
 tests and `python3 tests/terminal.py target/debug/nosh` after updating this copy.
