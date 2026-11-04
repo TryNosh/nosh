@@ -190,10 +190,12 @@ If `~/.nosh/` exists and `~/.config/nosh/` doesn't, nosh uses `~/.nosh/` for bac
 ## Shell startup and invocation
 
 Interactive startup interprets `~/.config/nosh/init.sh` once with Nosh's embedded
-Bash-compatible shell. The stock script reads `.bashrc` for non-login shells.
+Bash-compatible shell. Interactive non-login shells read `/etc/bash.bashrc`
+(or `/etc/bashrc` when the former is unavailable), then `~/.bashrc`.
 Login shells read `/etc/profile` and the first available `.bash_profile`,
 `.bash_login`, or `.profile`. Zsh startup files are not sourced by the stock
-script. An unchanged legacy stock init script is migrated automatically;
+script. When `init.sh` is absent, the embedded stock script is used. Unchanged
+stock scripts from earlier versions are migrated automatically;
 customized init files are preserved.
 
 Scripts, `-c`, and piped standard input run without onboarding, prompts, or

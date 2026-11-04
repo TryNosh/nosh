@@ -241,6 +241,9 @@ async fn run() -> Result<u8> {
             options.args.clone(),
         )
         .await?;
+        if let Some(status) = shell.exit_requested {
+            return Ok(status);
+        }
         let status = match options.mode {
             cli::Mode::Command(command) => shell.command_string(&command).await?,
             cli::Mode::Script(path) => shell.script(&path, options.args).await?,

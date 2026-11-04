@@ -43,6 +43,13 @@ error() {
     exit 1
 }
 
+# Print a shell literal, including paths containing spaces or single quotes.
+shell_quote() {
+    printf "'"
+    printf '%s' "$1" | sed "s/'/'\\\\''/g"
+    printf "'"
+}
+
 # Detect OS
 detect_os() {
     case "$(uname -s)" in
@@ -142,6 +149,7 @@ main() {
         info "Creating $INSTALL_DIR..."
         mkdir -p "$INSTALL_DIR"
     fi
+    INSTALL_DIR=$(cd "$INSTALL_DIR" && pwd -P)
 
     # Check if we can write to install dir
     if [ ! -w "$INSTALL_DIR" ]; then
@@ -179,9 +187,12 @@ main() {
         printf "\n"
         printf "    ${BOLD}nosh${NC}\n"
         printf "\n"
-        printf "To make nosh your default shell:\n"
+        printf "To make nosh your default shell, run these commands in Bash or Zsh:\n"
         printf "\n"
-        printf "    ${BOLD}chsh -s \$(which nosh)${NC}\n"
+        printf '    nosh_path=%s\n' "$(shell_quote "$INSTALL_DIR/nosh")"
+        printf '%s\n' '    grep -Fxq -- "$nosh_path" /etc/shells ||' \
+            '      printf '\''%s\n'\'' "$nosh_path" | sudo tee -a /etc/shells' \
+            '    chsh -s "$nosh_path"'
         printf "\n"
         printf "Documentation: ${BLUE}https://noshell.dev/docs${NC}\n"
         printf "\n"

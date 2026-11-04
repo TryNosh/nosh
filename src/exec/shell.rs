@@ -31,17 +31,18 @@ impl ShellSession {
     ) -> Result<Self> {
         let init_script = paths::init_file();
         // Migrate only the exact stock script; customized init files are preserved.
-        if load_rc
-            && std::fs::read_to_string(&init_script).ok().as_deref()
-                == Some(include_str!("../plugins/data/legacy-init.sh"))
-        {
-            std::fs::write(&init_script, include_str!("../plugins/data/init.sh"))?;
+        if load_rc {
+            let installed = std::fs::read_to_string(&init_script).ok();
+            if [
+                include_str!("../plugins/data/legacy-init.sh"),
+                include_str!("../plugins/data/legacy-init-v1.6.0.sh"),
+            ]
+            .iter()
+            .any(|stock| installed.as_deref() == Some(*stock))
+            {
+                std::fs::write(&init_script, include_str!("../plugins/data/init.sh"))?;
+            }
         }
-        let rc = if load_rc && init_script.exists() {
-            RcLoadBehavior::LoadCustom(init_script)
-        } else {
-            RcLoadBehavior::Skip
-        };
         let mut shell = Shell::builder()
             .builtins(default_builtins(BuiltinSet::BashMode))
             .interactive(interactive)
@@ -49,9 +50,32 @@ impl ShellSession {
             .shell_name(name)
             .shell_args(args)
             .profile(ProfileLoadBehavior::Skip)
-            .rc(rc)
+            .rc(RcLoadBehavior::Skip)
             .build()
             .await?;
+        // Brush's custom rc loader only runs for interactive non-login shells.
+        // Nosh owns startup for every supported invocation mode instead.
+        let mut exit_requested = None;
+        if load_rc {
+            let mut params = shell.default_exec_params();
+            params.process_group_policy = ProcessGroupPolicy::SameProcessGroup;
+            let result = if init_script.exists() {
+                shell
+                    .source_script(&init_script, std::iter::empty::<String>(), &params)
+                    .await?
+            } else {
+                shell
+                    .run_string(
+                        include_str!("../plugins/data/init.sh"),
+                        &SourceInfo::from("stock init.sh"),
+                        &params,
+                    )
+                    .await?
+            };
+            if matches!(result.next_control_flow, ExecutionControlFlow::ExitShell) {
+                exit_requested = Some(u8::from(result.exit_code));
+            }
+        }
         // Set environment variables for colored output (exported so child processes see them)
         let mut clicolor = ShellVariable::new("1");
         clicolor.export();
@@ -79,7 +103,7 @@ impl ShellSession {
 
         Ok(Self {
             shell,
-            exit_requested: None,
+            exit_requested,
             params,
             job_control_params,
         })

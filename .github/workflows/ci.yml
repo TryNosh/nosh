@@ -34,6 +34,9 @@ jobs:
       - name: Terminal compatibility
         run: python3 tests/terminal.py target/debug/nosh
 
+      - name: Installer instructions
+        run: python3 tests/installer.py
+
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
