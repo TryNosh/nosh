@@ -9,6 +9,9 @@ use std::path::PathBuf;
 /// Prefers `~/.config/nosh/` if it exists or if `~/.nosh/` doesn't exist.
 /// Falls back to `~/.nosh/` if it exists and `~/.config/nosh/` doesn't.
 pub fn nosh_config_dir() -> PathBuf {
+    if let Some(path) = std::env::var_os("NOSH_CONFIG_DIR") {
+        return PathBuf::from(path);
+    }
     let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
 
     let primary = home.join(".config").join("nosh");

@@ -92,6 +92,15 @@ impl AgenticSession {
         Ok(())
     }
 
+    pub fn remaining_time(&self) -> Duration {
+        if self.config.timeout_seconds == 0 {
+            Duration::from_secs(365 * 24 * 60 * 60)
+        } else {
+            Duration::from_secs(self.config.timeout_seconds)
+                .saturating_sub(self.start_time.elapsed())
+        }
+    }
+
     /// Increment iteration count.
     pub fn increment(&mut self) {
         self.iterations += 1;

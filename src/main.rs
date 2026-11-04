@@ -1,5 +1,6 @@
 mod ai;
 mod auth;
+mod cli;
 mod completions;
 mod config;
 mod exec;
@@ -165,20 +166,32 @@ use repl::{ReadlineResult, Repl};
 use safety::{PermissionChoice, PermissionStore, RiskLevel, parse_command, prompt_for_permission};
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> std::process::ExitCode {
+    match run().await {
+        Ok(status) => std::process::ExitCode::from(status),
+        Err(error) => {
+            eprintln!("nosh: {error}");
+            std::process::ExitCode::from(2)
+        }
+    }
+}
+
+async fn run() -> Result<u8> {
     let args: Vec<String> = std::env::args().collect();
 
     // Handle --version
-    if args.iter().any(|a| a == "--version" || a == "-V") {
+    if args.get(1).is_some_and(|a| a == "--version" || a == "-V") {
         println!("nosh v{}", env!("CARGO_PKG_VERSION"));
         std::process::exit(0);
     }
 
     // Handle --help
-    if args.iter().any(|a| a == "--help" || a == "-h") {
+    if args.get(1).is_some_and(|a| a == "--help" || a == "-h") {
         println!("nosh v{}", env!("CARGO_PKG_VERSION"));
         println!("A modern shell for developers\n");
-        println!("Usage: nosh [COMMAND] [OPTIONS]\n");
+        println!("Usage: nosh [OPTIONS] [SCRIPT [ARGS...]]");
+        println!("       nosh -c COMMAND [NAME [ARGS...]]");
+        println!("       nosh -s [ARGS...]\n");
         println!("Commands:");
         println!("  convert-zsh FILE   Convert zsh completion file to nosh TOML format");
         println!("\nOptions:");
@@ -194,7 +207,7 @@ async fn main() -> Result<()> {
         println!("  Terms of Use:    https://nosh.sh/docs/terms");
         println!("  Privacy Policy:  https://nosh.sh/docs/privacy");
         println!("\nBy using nosh, you agree to the Terms of Use.");
-        return Ok(());
+        return Ok(0);
     }
 
     // Handle convert-zsh subcommand
@@ -204,7 +217,7 @@ async fn main() -> Result<()> {
             match completions::convert_zsh_file(path) {
                 Ok(toml) => {
                     println!("{}", toml);
-                    return Ok(());
+                    return Ok(0);
                 }
                 Err(e) => {
                     eprintln!("Error converting zsh completion: {}", e);
@@ -218,12 +231,32 @@ async fn main() -> Result<()> {
         }
     }
 
+    let options = cli::Options::parse(&args)?;
+    if options.mode != cli::Mode::Interactive {
+        let mut shell = ShellSession::configured(
+            options.interactive,
+            options.login,
+            !options.no_rc && (options.interactive || options.login),
+            options.name,
+            options.args.clone(),
+        )
+        .await?;
+        let status = match options.mode {
+            cli::Mode::Command(command) => shell.command_string(&command).await?,
+            cli::Mode::Script(path) => shell.script(&path, options.args).await?,
+            cli::Mode::Stdin => {
+                use std::io::Read;
+                let mut source = String::new();
+                std::io::stdin().read_to_string(&mut source)?;
+                shell.command_string(&source).await?
+            }
+            cli::Mode::Interactive => unreachable!(),
+        };
+        return Ok(status);
+    }
+
     // Handle --setup flag
     let force_setup = args.iter().any(|a| a == "--setup");
-
-    // Initialize environment (source shell profiles to get PATH)
-    // This is needed when nosh is used as a login shell
-    exec::env::init();
 
     // Initialize terminal control for job control support (Ctrl+Z, fg, bg, jobs)
     if let Err(e) = exec::terminal::init() {
@@ -256,21 +289,32 @@ async fn main() -> Result<()> {
         println!("{}\n", config.welcome_message);
     }
 
+    let shell = std::rc::Rc::new(tokio::sync::Mutex::new(
+        ShellSession::configured(
+            true,
+            options.login,
+            !options.no_rc,
+            options.name,
+            options.args,
+        )
+        .await?,
+    ));
     // Initialize REPL with theme from config
     let mut repl = Repl::new(
         &config.prompt.theme,
         Some(config.history.load_count),
         config.prompt.syntax_highlighting,
+        std::rc::Rc::clone(&shell),
     )?;
     repl.load_history();
-
-    // Create persistent shell session (brush-based bash interpreter)
-    let mut shell = ShellSession::new().await?;
 
     // Create conversation context for AI
     let mut ai_context = ConversationContext::new(config.ai.context_size);
 
     loop {
+        if shell.lock().await.exit_requested.is_some() {
+            break;
+        }
         let cwd = std::env::current_dir()
             .map(|p| p.display().to_string())
             .unwrap_or_else(|_| ".".to_string());
@@ -286,7 +330,7 @@ async fn main() -> Result<()> {
                 println!();
                 continue;
             }
-            ReadlineResult::Line(line) if line == "exit" || line == "quit" => break,
+            ReadlineResult::Line(line) if line == "quit" => break,
             ReadlineResult::Line(line) if line == "/setup" => {
                 match run_onboarding().await {
                     Ok(OnboardingChoice::Cloud) => {
@@ -1262,12 +1306,6 @@ description = "Show version"
                 }
                 continue;
             }
-            ReadlineResult::Line(line) if line.starts_with('/') => {
-                // Unknown built-in command
-                eprintln!("Unknown command: {}", line);
-                eprintln!("Type /help for available commands.");
-                continue;
-            }
             ReadlineResult::Line(line) if line.starts_with("??") => {
                 // Agentic mode - AI investigates before answering
                 let input = line[2..].trim();
@@ -1312,7 +1350,8 @@ description = "Show version"
                     println!(); // Separate from previous step
                     let ai_spinner = ui::spinner::create();
 
-                    let fut = client.agentic_step(input, &cwd, Some(&ai_context), &executions);
+                    let step_cwd = std::env::current_dir()?.display().to_string();
+                    let fut = client.agentic_step(input, &step_cwd, Some(&ai_context), &executions);
                     let step = tokio::select! {
                         res = fut => match res {
                             Ok(s) => {
@@ -1325,6 +1364,9 @@ description = "Show version"
                                 break;
                             }
                         },
+                        _ = tokio::time::sleep(session.remaining_time()) => {
+                            ai_spinner.finish_and_clear(); eprintln!("Agentic session timed out"); break;
+                        }
                         _ = tokio::signal::ctrl_c() => {
                             ai_spinner.finish_and_clear();
                             println!("\nCancelled.");
@@ -1337,7 +1379,8 @@ description = "Show version"
                     match step {
                         AgenticStep::RunCommand { command, reasoning } => {
                             // Check permissions
-                            let permission = session.check_permission(&command, &cwd, &permissions);
+                            let permission =
+                                session.check_permission(&command, &step_cwd, &permissions);
 
                             let should_run = match permission {
                                 CommandPermission::Allowed => true,
@@ -1369,13 +1412,13 @@ description = "Show version"
                                         PermissionChoice::AllowCommandHere => {
                                             permissions.allow_command_in_directory(
                                                 &parsed.info.command_pattern,
-                                                &cwd,
+                                                &step_cwd,
                                                 true,
                                             );
                                             true
                                         }
                                         PermissionChoice::AllowHere => {
-                                            permissions.allow_directory(&cwd, true);
+                                            permissions.allow_directory(&step_cwd, true);
                                             true
                                         }
                                         PermissionChoice::Deny => {
@@ -1408,40 +1451,23 @@ description = "Show version"
                             spinner.set_message("Running...");
                             spinner.enable_steady_tick(std::time::Duration::from_millis(100));
 
-                            // Capture output by running through shell (Ctrl+C cancels agentic loop)
-                            let cmd_fut = tokio::process::Command::new("sh")
-                                .arg("-c")
-                                .arg(&command)
-                                .current_dir(&cwd)
-                                .output();
-                            let output = tokio::select! {
-                                res = cmd_fut => match res {
-                                    Ok(out) => {
-                                        spinner.finish_and_clear();
-                                        let stdout = String::from_utf8_lossy(&out.stdout);
-                                        let stderr = String::from_utf8_lossy(&out.stderr);
-                                        let combined = if stderr.is_empty() {
-                                            stdout.to_string()
-                                        } else {
-                                            format!("{}\n{}", stdout, stderr)
-                                        };
-
-                                        // Print output in dimmed box
-                                        let formatted = format_output(&combined);
-                                        if !formatted.is_empty() {
-                                            println!("{}", formatted);
-                                        }
-
-                                        (combined, out.status.code().unwrap_or(1))
-                                    }
-                                    Err(e) => {
-                                        spinner.finish_and_clear();
-                                        (format!("Error: {}", e), 1)
-                                    }
-                                },
-                                _ = tokio::signal::ctrl_c() => {
+                            let output = match shell
+                                .lock()
+                                .await
+                                .capture(&command, session.remaining_time())
+                                .await
+                            {
+                                Ok(output) => {
                                     spinner.finish_and_clear();
-                                    println!("\nCancelled.");
+                                    let formatted = format_output(&output.0);
+                                    if !formatted.is_empty() {
+                                        println!("{}", formatted);
+                                    }
+                                    output
+                                }
+                                Err(error) => {
+                                    spinner.finish_and_clear();
+                                    eprintln!("{error}");
                                     break;
                                 }
                             };
@@ -1564,7 +1590,7 @@ description = "Show version"
                 if should_execute {
                     repl.start_command();
                     // AI commands run without job control (Ctrl+Z won't suspend)
-                    if let Err(e) = shell.execute_no_job_control(&command).await {
+                    if let Err(e) = shell.lock().await.execute_no_job_control(&command).await {
                         eprintln!("Execution error: {}", e);
                     }
                     repl.end_command();
@@ -1573,18 +1599,19 @@ description = "Show version"
             ReadlineResult::Line(command) => {
                 // Direct command - execute with job control (Ctrl+Z suspends)
                 repl.start_command();
-                if let Err(e) = shell.execute(&command).await {
+                if let Err(e) = shell.lock().await.execute(&command).await {
                     eprintln!("Execution error: {}", e);
                 }
                 repl.end_command();
 
                 // Check for completed background jobs
-                let _ = shell.check_jobs();
+                let _ = shell.lock().await.check_jobs();
             }
         }
     }
 
     repl.save_history();
     println!("Goodbye!");
-    Ok(())
+    let session = shell.lock().await;
+    Ok(session.exit_requested.unwrap_or_else(|| session.status()))
 }

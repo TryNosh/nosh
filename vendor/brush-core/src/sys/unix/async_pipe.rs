@@ -16,6 +16,14 @@ impl AsyncPipeReader {
 
     pub(crate) async fn read_to_string(&mut self) -> io::Result<String> {
         use tokio::io::AsyncReadExt;
+        if crate::process_scope::active() {
+            let mut bytes = Vec::new();
+            (&mut self.0)
+                .take(1024 * 1024)
+                .read_to_end(&mut bytes)
+                .await?;
+            return Ok(String::from_utf8_lossy(&bytes).into_owned());
+        }
         let mut s = String::new();
         self.0.read_to_string(&mut s).await?;
         Ok(s)

@@ -1,7 +1,7 @@
 //! Completion manager with lazy loading and caching.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -11,7 +11,7 @@ use anyhow::Result;
 
 use super::{
     BuiltinCompleter, CommandCompletion, Completion, CompletionContext, CompletionFile,
-    DynamicCompleterDef,
+    CompletionInput, DynamicCompleterDef,
 };
 use crate::paths;
 
@@ -35,7 +35,9 @@ pub struct CompletionManager {
     /// Cache for dynamic completer results
     dynamic_cache: RefCell<HashMap<String, DynamicCache>>,
     /// Paths to search for completion files
-    search_paths: Vec<PathBuf>,
+    search_paths: RefCell<Vec<PathBuf>>,
+    missing: RefCell<HashSet<String>>,
+    environment: RefCell<HashMap<String, String>>,
 }
 
 impl Default for CompletionManager {
@@ -47,14 +49,16 @@ impl Default for CompletionManager {
 impl CompletionManager {
     pub fn new() -> Self {
         // Build search paths from packages
-        let mut search_paths = Vec::new();
+        let mut search_paths = vec![paths::nosh_config_dir().join("completions")];
 
         // Scan packages directory for completions
         let packages_dir = paths::packages_dir();
         if packages_dir.exists()
             && let Ok(entries) = std::fs::read_dir(&packages_dir)
         {
-            for entry in entries.flatten() {
+            let mut entries: Vec<_> = entries.flatten().collect();
+            entries.sort_by_key(|entry| (entry.file_name() == "builtins", entry.file_name()));
+            for entry in entries {
                 let package_path = entry.path();
                 if package_path.is_dir() {
                     let completions_path = package_path.join("completions");
@@ -68,84 +72,125 @@ impl CompletionManager {
         Self {
             commands: RefCell::new(HashMap::new()),
             dynamic_cache: RefCell::new(HashMap::new()),
-            search_paths,
+            search_paths: RefCell::new(search_paths),
+            missing: RefCell::new(HashSet::new()),
+            environment: RefCell::new(std::env::vars().collect()),
         }
     }
 
     /// Get completions for given input line and cursor position.
     pub fn complete(&self, line: &str, pos: usize) -> Vec<Completion> {
+        let input = CompletionInput::parse(line, pos);
+        if input.comment {
+            return Vec::new();
+        }
         let context = self.parse_context(line, pos);
-        self.complete_with_context(&context)
+        let mut candidates = self.complete_with_context(&context);
+        if matches!(context, CompletionContext::OptionValue { .. })
+            && let Some((option, _)) = input.prefix.split_once('=')
+        {
+            for candidate in &mut candidates {
+                candidate.text = format!("{option}={}", candidate.text);
+            }
+        }
+        candidates.sort_by(|a, b| a.text.cmp(&b.text));
+        candidates.dedup_by(|a, b| a.text == b.text);
+        candidates
+    }
+
+    pub fn has_definition(&self, command: &str) -> bool {
+        let command = Path::new(command)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(command);
+        self.ensure_loaded(command);
+        self.commands.borrow().contains_key(command)
+    }
+
+    pub fn invalidate(&self) {
+        self.commands.borrow_mut().clear();
+        self.missing.borrow_mut().clear();
+        self.dynamic_cache.borrow_mut().clear();
+        *self.search_paths.borrow_mut() = Self::new().search_paths.into_inner();
+    }
+
+    pub fn set_environment(&self, environment: HashMap<String, String>) {
+        if *self.environment.borrow() != environment {
+            self.dynamic_cache.borrow_mut().clear();
+            *self.environment.borrow_mut() = environment;
+        }
+    }
+
+    #[cfg(test)]
+    pub fn for_paths(paths: Vec<PathBuf>) -> Self {
+        let manager = Self::new();
+        *manager.search_paths.borrow_mut() = paths;
+        manager
     }
 
     /// Parse the input line to determine completion context.
     pub fn parse_context(&self, line: &str, pos: usize) -> CompletionContext {
-        let line = &line[..pos];
-
-        // Parse words, handling quotes
-        let words = match shell_words::split(line) {
-            Ok(w) => w,
-            Err(_) => {
-                // Unclosed quote - try to parse anyway
-                line.split_whitespace().map(|s| s.to_string()).collect()
-            }
-        };
-
-        // Find current word prefix
-        let prefix = if line.ends_with(' ') || line.ends_with('\t') {
-            String::new()
-        } else {
-            words.last().cloned().unwrap_or_default()
-        };
-
-        // Empty line or completing first word = command completion
-        if words.is_empty() || (words.len() == 1 && !line.ends_with(' ')) {
+        let input = CompletionInput::parse(line, pos);
+        let prefix = input.prefix.clone();
+        if input.redirect {
+            return CompletionContext::Files { prefix };
+        }
+        let Some(command) = input.command() else {
             return CompletionContext::Command { prefix };
-        }
-
-        let command = words[0].clone();
-
-        // Completing an option (starts with -)
-        if prefix.starts_with('-') {
-            let subcommand = self.find_subcommand(&words, &command);
-            return CompletionContext::Option {
-                command,
-                subcommand,
-                prefix,
-            };
-        }
-
-        // Check if previous word was an option that takes a value
-        if words.len() >= 2 {
-            let prev = &words[words.len() - if prefix.is_empty() { 1 } else { 2 }];
-            if prev.starts_with('-') {
-                let subcommand = self.find_subcommand(&words, &command);
-                if self.option_takes_value(&command, subcommand.as_deref(), prev) {
-                    return CompletionContext::OptionValue {
-                        command,
-                        subcommand,
-                        option: prev.clone(),
-                        prefix,
-                    };
-                }
+        };
+        let command = Path::new(command)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(command)
+            .to_string();
+        let words: Vec<String> = input
+            .words
+            .iter()
+            .skip_while(|word| word.contains('='))
+            .cloned()
+            .collect();
+        let subcommand = self.find_subcommand(&words, &command);
+        let end_options = words.iter().any(|word| word == "--");
+        if !end_options {
+            if let Some((option, value)) = prefix.split_once('=')
+                && self.option_takes_value(&command, subcommand.as_deref(), option)
+            {
+                return CompletionContext::OptionValue {
+                    command,
+                    subcommand,
+                    option: option.into(),
+                    prefix: value.into(),
+                };
+            }
+            if let Some(previous) = words.last()
+                && self.option_takes_value(&command, subcommand.as_deref(), previous)
+            {
+                return CompletionContext::OptionValue {
+                    command,
+                    subcommand,
+                    option: previous.clone(),
+                    prefix,
+                };
+            }
+            if prefix.starts_with('-') {
+                return CompletionContext::Option {
+                    command,
+                    subcommand,
+                    prefix,
+                };
             }
         }
-
-        // Check if we're completing a subcommand
-        let subcommand = self.find_subcommand(&words, &command);
-
-        if subcommand.is_none() {
-            // Try to complete subcommand if we have one loaded
+        if subcommand.is_none() && !end_options {
             self.ensure_loaded(&command);
-            if let Some(cmd) = self.commands.borrow().get(&command)
-                && !cmd.subcommands.is_empty()
+            if self
+                .commands
+                .borrow()
+                .get(&command)
+                .is_some_and(|cmd| !cmd.subcommands.is_empty())
             {
-                // Could be completing a subcommand
                 return CompletionContext::Subcommand { command, prefix };
             }
         }
-
-        // Positional argument completion
         CompletionContext::Positional {
             command,
             subcommand,
@@ -158,10 +203,24 @@ impl CompletionManager {
         self.ensure_loaded(command);
 
         if let Some(cmd) = self.commands.borrow().get(command) {
+            let mut skip_value = false;
             for word in words.iter().skip(1) {
-                if !word.starts_with('-') && cmd.subcommands.contains_key(word) {
-                    return Some(word.clone());
+                if skip_value {
+                    skip_value = false;
+                    continue;
                 }
+                if word.starts_with('-') && word != "--" {
+                    skip_value = !word.contains('=')
+                        && cmd
+                            .options
+                            .iter()
+                            .any(|option| option.name == *word && option.takes_value);
+                    continue;
+                }
+                if word == "--" {
+                    continue;
+                }
+                return cmd.subcommands.contains_key(word).then(|| word.clone());
             }
         }
         None
@@ -197,6 +256,7 @@ impl CompletionManager {
     /// Complete based on parsed context.
     fn complete_with_context(&self, context: &CompletionContext) -> Vec<Completion> {
         match context {
+            CompletionContext::Files { prefix } => BuiltinCompleter::Files.complete(prefix),
             CompletionContext::Command { prefix } => self.complete_command(prefix),
 
             CompletionContext::Subcommand { command, prefix } => {
@@ -388,7 +448,9 @@ impl CompletionManager {
             }
         }
 
-        // Default to file completion
+        if matches!(command, "cd" | "pushd" | "rmdir") {
+            return BuiltinCompleter::Directories.complete(prefix);
+        }
         BuiltinCompleter::Files.complete(prefix)
     }
 
@@ -417,7 +479,11 @@ impl CompletionManager {
         def: &DynamicCompleterDef,
         prefix: &str,
     ) -> Vec<Completion> {
-        let cache_key = name.to_string();
+        let cache_key = format!(
+            "{}:{name}:{}",
+            std::env::current_dir().unwrap_or_default().display(),
+            def.command
+        );
 
         // Check cache
         {
@@ -457,7 +523,12 @@ impl CompletionManager {
 
     /// Execute a shell command and return lines of output.
     fn execute_dynamic_command(&self, cmd: &str) -> Vec<String> {
-        let output = Command::new("sh").args(["-c", cmd]).output();
+        let mut command = Command::new("sh");
+        command
+            .args(["-c", cmd])
+            .env_clear()
+            .envs(self.environment.borrow().iter());
+        let output = crate::exec::process::output(command, Duration::from_millis(200));
 
         match output {
             Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout)
@@ -471,12 +542,12 @@ impl CompletionManager {
 
     /// Ensure completions for a command are loaded.
     fn ensure_loaded(&self, command: &str) {
-        if self.commands.borrow().contains_key(command) {
+        if self.commands.borrow().contains_key(command) || self.missing.borrow().contains(command) {
             return; // Already loaded
         }
 
         // Search for completion file
-        for path in &self.search_paths {
+        for path in self.search_paths.borrow().iter() {
             let file = path.join(format!("{}.toml", command));
             if file.exists()
                 && let Ok(completion) = self.load_file(&file, command)
@@ -486,6 +557,23 @@ impl CompletionManager {
                     .insert(command.to_string(), completion);
                 return;
             }
+        }
+        let embedded = match command {
+            "git" => Some(include_str!("data/git.toml")),
+            "cargo" => Some(include_str!("data/cargo.toml")),
+            "npm" => Some(include_str!("data/npm.toml")),
+            "docker" => Some(include_str!("data/docker.toml")),
+            _ => None,
+        };
+        if let Some(source) = embedded
+            && let Ok(mut file) = toml::from_str::<CompletionFile>(source)
+            && let Some(definition) = file.completions.remove(command)
+        {
+            self.commands
+                .borrow_mut()
+                .insert(command.into(), CommandCompletion::from_def(definition));
+        } else {
+            self.missing.borrow_mut().insert(command.into());
         }
     }
 

@@ -27,6 +27,7 @@ pub mod options;
 pub mod pathcache;
 pub mod pathsearch;
 pub mod patterns;
+pub mod process_scope;
 pub mod processes;
 mod prompt;
 mod regex;

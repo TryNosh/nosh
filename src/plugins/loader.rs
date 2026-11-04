@@ -47,6 +47,8 @@ pub struct PluginManager {
     running_tasks: Arc<Mutex<HashMap<String, RunningTask>>>,
     last_command_duration: Option<Duration>,
     context_cache: ContextCache,
+    environment: HashMap<String, String>,
+    working_dir: std::path::PathBuf,
 }
 
 impl PluginManager {
@@ -58,6 +60,23 @@ impl PluginManager {
             running_tasks: Arc::new(Mutex::new(HashMap::new())),
             last_command_duration: None,
             context_cache: ContextCache::new(),
+            environment: std::env::vars().collect(),
+            working_dir: std::env::current_dir().unwrap_or_default(),
+        }
+    }
+
+    pub async fn set_context(&mut self, environment: HashMap<String, String>) {
+        let working_dir = std::env::current_dir().unwrap_or_default();
+        if self.environment != environment || self.working_dir != working_dir {
+            self.environment = environment;
+            self.working_dir = working_dir;
+            self.cache.lock().await.clear();
+            let mut running = self.running_tasks.lock().await;
+            for task in running.values() {
+                task.handle.abort();
+            }
+            running.clear();
+            self.context_cache.invalidate();
         }
     }
 
@@ -401,7 +420,6 @@ impl PluginManager {
     /// Spawn a background task to fetch a variable value.
     async fn spawn_variable_task(&self, key: String) {
         let cache = Arc::clone(&self.cache);
-        let running = Arc::clone(&self.running_tasks);
 
         // Get plugin info needed for the task
         let parts: Vec<&str> = key.split(':').collect();
@@ -428,8 +446,17 @@ impl PluginManager {
         let key_clone = key.clone();
 
         let var_name_owned = var_name.to_string();
+        let environment = self.environment.clone();
+        let working_dir = self.working_dir.clone();
         let handle = tokio::spawn(async move {
-            let result = execute_provider_async(&plugin, &var_name_owned, &provider).await;
+            let result = execute_provider_async(
+                &plugin,
+                &var_name_owned,
+                &provider,
+                &environment,
+                &working_dir,
+            )
+            .await;
 
             // Update cache based on cache duration setting
             if let Some(ref value) = result {
@@ -448,9 +475,6 @@ impl PluginManager {
                     },
                 );
             }
-
-            // Remove from running tasks
-            running.lock().await.remove(&key_clone);
 
             result
         });
@@ -473,15 +497,15 @@ impl PluginManager {
             running.remove(key)
         };
 
-        if let Some(task) = task {
-            match tokio::time::timeout(timeout, task.handle).await {
+        if let Some(mut task) = task {
+            match tokio::time::timeout(timeout, &mut task.handle).await {
                 Ok(Ok(result)) => result,
                 Ok(Err(_)) => None, // Task panicked
                 Err(_) => {
-                    // Timeout - task is still running, put it back
-                    // Note: We can't put the original task back since we consumed it,
-                    // but that's OK - the task continues running in the background
-                    // and will update the cache when done
+                    self.running_tasks
+                        .lock()
+                        .await
+                        .insert(key.to_string(), task);
                     None
                 }
             }
@@ -499,7 +523,9 @@ impl PluginManager {
 
         let stale_keys: Vec<String> = running
             .iter()
-            .filter(|(_, task)| now.duration_since(task.started_at) > HARD_TIMEOUT)
+            .filter(|(_, task)| {
+                task.handle.is_finished() || now.duration_since(task.started_at) > HARD_TIMEOUT
+            })
             .map(|(key, _)| key.clone())
             .collect();
 
@@ -549,11 +575,13 @@ impl PluginManager {
             VariableProvider::Command {
                 command, transform, ..
             } => {
-                let output = std::process::Command::new("sh")
-                    .arg("-c")
-                    .arg(command)
-                    .output()
-                    .ok()?;
+                let mut process = std::process::Command::new("sh");
+                process
+                    .args(["-c", command])
+                    .env_clear()
+                    .envs(&self.environment)
+                    .current_dir(&self.working_dir);
+                let output = crate::exec::process::output(process, HARD_TIMEOUT).ok()?;
 
                 let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
@@ -645,11 +673,17 @@ impl PluginManager {
                         desc.push_str(&format!(" (cache: {})", c));
                     }
 
-                    let output = tokio::process::Command::new("sh")
-                        .arg("-c")
-                        .arg(command)
-                        .output()
-                        .await;
+                    let mut process = std::process::Command::new("sh");
+                    process
+                        .args(["-c", command])
+                        .env_clear()
+                        .envs(&self.environment)
+                        .current_dir(&self.working_dir);
+                    let output = tokio::task::spawn_blocking(move || {
+                        crate::exec::process::output(process, HARD_TIMEOUT)
+                    })
+                    .await
+                    .unwrap_or_else(|error| Err(std::io::Error::other(error)));
 
                     let result = match output {
                         Ok(out) => {
@@ -733,17 +767,25 @@ async fn execute_provider_async(
     plugin: &Plugin,
     var_name: &str,
     provider: &VariableProvider,
+    environment: &HashMap<String, String>,
+    working_dir: &Path,
 ) -> Option<String> {
     match provider {
         VariableProvider::Command {
             command, transform, ..
         } => {
-            let output = tokio::process::Command::new("sh")
-                .arg("-c")
-                .arg(command)
-                .output()
-                .await
-                .ok()?;
+            let mut process = std::process::Command::new("sh");
+            process
+                .args(["-c", command])
+                .env_clear()
+                .envs(environment)
+                .current_dir(working_dir);
+            let output = tokio::task::spawn_blocking(move || {
+                crate::exec::process::output(process, HARD_TIMEOUT)
+            })
+            .await
+            .ok()?
+            .ok()?;
 
             let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
 

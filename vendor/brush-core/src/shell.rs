@@ -199,6 +199,20 @@ impl<SE: extensions::ShellExtensions> AsMut<Self> for Shell<SE> {
 }
 
 impl<SE: extensions::ShellExtensions> Shell<SE> {
+    /// Copies shell state for a cancellable embedded operation, preserving shell depth.
+    /// Running jobs remain owned by the original shell.
+    pub fn operation_snapshot(&self) -> Self {
+        let mut snapshot = self.clone();
+        snapshot.depth = self.depth;
+        snapshot
+    }
+
+    /// Commits a completed operation's state while retaining existing running jobs.
+    pub fn commit_operation(&mut self, mut snapshot: Self) {
+        std::mem::swap(&mut self.jobs, &mut snapshot.jobs);
+        *self = snapshot;
+    }
+
     /// Returns a new shell instance created with the given options.
     /// Does *not* load any configuration files (e.g., bashrc).
     ///

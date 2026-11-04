@@ -81,10 +81,6 @@ fn complete_files(prefix: &str, dirs_only: bool) -> Vec<Completion> {
         let path = Path::new(prefix);
         if prefix.ends_with('/') || prefix.ends_with(std::path::MAIN_SEPARATOR) {
             (path.to_path_buf(), String::new())
-        } else if path.is_dir() && !prefix.ends_with('.') {
-            // Ambiguous: could be completing inside dir or completing the dir name
-            // Try completing inside the directory
-            (path.to_path_buf(), String::new())
         } else {
             let parent = path.parent().unwrap_or(Path::new("."));
             // Empty parent means current directory
@@ -120,7 +116,7 @@ fn complete_files(prefix: &str, dirs_only: bool) -> Vec<Completion> {
             }
 
             // Check if directory-only filter applies
-            let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+            let is_dir = entry.path().is_dir();
             if dirs_only && !is_dir {
                 continue;
             }
@@ -162,7 +158,7 @@ fn complete_files(prefix: &str, dirs_only: bool) -> Vec<Completion> {
                 if !name.to_lowercase().contains(&lower_prefix) {
                     continue;
                 }
-                let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+                let is_dir = entry.path().is_dir();
                 if dirs_only && !is_dir {
                     continue;
                 }
@@ -268,7 +264,7 @@ fn complete_executables(prefix: &str) -> Vec<Completion> {
                     // Check if executable
                     if let Ok(metadata) = entry.metadata() {
                         let mode = metadata.permissions().mode();
-                        if mode & 0o111 != 0 {
+                        if metadata.is_file() && mode & 0o111 != 0 {
                             seen.insert(name.clone());
                             completions.push(Completion::new(name).with_description("command"));
                         }
@@ -288,8 +284,8 @@ fn complete_env_vars(prefix: &str) -> Vec<Completion> {
     let mut completions: Vec<_> = env::vars()
         .filter(|(name, _)| name.starts_with(prefix))
         .map(|(name, value)| {
-            let display_val = if value.len() > 30 {
-                format!("{}...", &value[..27])
+            let display_val = if value.chars().count() > 30 {
+                format!("{}...", value.chars().take(27).collect::<String>())
             } else {
                 value
             };

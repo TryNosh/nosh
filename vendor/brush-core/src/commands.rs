@@ -774,9 +774,12 @@ pub(crate) async fn invoke_command_in_subshell_and_get_output(
 
     let mut async_reader = sys::async_pipe::AsyncPipeReader::new(reader)?;
 
-    let cmd_join_handle = tokio::spawn(run_substitution_command(subshell, params, s));
+    let cmd_join_handle =
+        crate::process_scope::spawn(run_substitution_command(subshell, params, s));
 
     let output_str = async_reader.read_to_string().await?;
+    // Close capped readers before waiting, so writers receive SIGPIPE instead of blocking.
+    drop(async_reader);
 
     // Now observe the command's completion.
     let run_result = cmd_join_handle.await?;

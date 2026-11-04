@@ -423,10 +423,12 @@ impl Spec {
         // If we still have no candidates, and bashdefault completions were requested, then generate
         // those.
         if candidates.is_empty() && options.bash_default {
-            // TODO(completions): it's not clear what default "bash" completions means. From basic
-            // testing, this doesn't seem to include basic file and directory name
-            // completion.
-            tracing::debug!(target: trace_categories::COMPLETION, "unimplemented: complete -o bashdefault");
+            if let Answer::Candidates(fallback, fallback_options) =
+                get_completions_using_basic_lookup(shell, context).await
+            {
+                candidates = fallback;
+                processing_options = fallback_options;
+            }
         }
 
         // If we still have no candidates, and default completions were requested, then generate

@@ -31,6 +31,7 @@ pub struct Repl {
     #[allow(dead_code)]
     completion_manager: Rc<CompletionManager>,
     history_load_count: usize,
+    shell: Rc<tokio::sync::Mutex<crate::exec::ShellSession>>,
 }
 
 impl Repl {
@@ -38,6 +39,7 @@ impl Repl {
         theme_name: &str,
         history_load_count: Option<usize>,
         syntax_highlighting: bool,
+        shell: Rc<tokio::sync::Mutex<crate::exec::ShellSession>>,
     ) -> Result<Self> {
         // Create SQLite-backed history with lazy loading
         let history = SqliteRustylineHistory::open(&paths::history_db())
@@ -45,12 +47,13 @@ impl Repl {
 
         // Create completion manager (lazy-loading)
         let completion_manager = Rc::new(CompletionManager::new());
-        let helper = NoshHelper::new(Rc::clone(&completion_manager), syntax_highlighting);
+        let mut helper = NoshHelper::new(Rc::clone(&completion_manager), syntax_highlighting);
+        helper.set_shell(Rc::clone(&shell));
 
         // Configure rustyline with our SQLite history and helper
         let config = Config::builder()
             .auto_add_history(false) // We handle this manually
-            .completion_type(rustyline::CompletionType::List)
+            .completion_type(rustyline::CompletionType::Circular)
             .build();
         let mut editor = Editor::with_history(config, history)?;
         editor.set_helper(Some(helper));
@@ -79,6 +82,7 @@ impl Repl {
             last_command_start: None,
             completion_manager,
             history_load_count: history_load_count.unwrap_or(200),
+            shell,
         })
     }
 
@@ -110,6 +114,9 @@ impl Repl {
     /// Generate the prompt string asynchronously.
     /// Uses parallel plugin execution with soft/hard timeouts.
     pub async fn prompt(&mut self) -> String {
+        self.plugin_manager
+            .set_context(self.shell.lock().await.environment())
+            .await;
         // Get all plugin variables needed from theme
         let vars = self.theme.get_plugin_variables();
 
@@ -142,6 +149,7 @@ impl Repl {
 
     /// Reload theme and plugins from disk.
     pub fn reload(&mut self, theme_name: &str) {
+        self.completion_manager.invalidate();
         // Reload plugins
         self.plugin_manager = PluginManager::new();
         let _ = self.plugin_manager.load_plugins();

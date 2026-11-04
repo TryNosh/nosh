@@ -4,10 +4,12 @@
 //! Files are searched in `~/.config/nosh/completions/` and `~/.config/nosh/plugins/`.
 
 mod builtins;
+mod input;
 mod manager;
 mod zsh_convert;
 
 pub use builtins::BuiltinCompleter;
+pub use input::{CompletionInput, quote_replacement, word_end};
 pub use manager::CompletionManager;
 pub use zsh_convert::convert_zsh_file;
 
@@ -17,10 +19,18 @@ use std::collections::HashMap;
 /// Context for completion - determines what type of completion is needed.
 #[derive(Debug, Clone)]
 pub enum CompletionContext {
+    Files {
+        prefix: String,
+    },
     /// Completing command name (first word)
-    Command { prefix: String },
+    Command {
+        prefix: String,
+    },
     /// Completing subcommand
-    Subcommand { command: String, prefix: String },
+    Subcommand {
+        command: String,
+        prefix: String,
+    },
     /// Completing option (starting with - or --)
     Option {
         command: String,

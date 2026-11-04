@@ -1,17 +1,16 @@
-# Nosh initialization script
-# Sources shell profiles to set up PATH and environment
-
-# Source login profile files (these set up PATH)
-# Order matters: more specific files override general ones
-[ -f /etc/profile ] && source /etc/profile
-[ -f ~/.profile ] && source ~/.profile
-
-# Bash-specific login profile
-[ -f ~/.bash_profile ] && source ~/.bash_profile
-
-# Zsh-specific (in case user migrated from zsh)
-[ -f ~/.zprofile ] && source ~/.zprofile
-[ -f ~/.zshrc ] && source ~/.zshrc 2>/dev/null
-
-# Finally source bashrc for aliases and functions
-[ -f ~/.bashrc ] && source ~/.bashrc
+# Nosh initialization, interpreted once by the embedded Bash-compatible shell.
+# Login shells follow Bash's profile precedence. Interactive non-login shells
+# read .bashrc. Zsh configuration is not Bash-compatible and is not sourced.
+if shopt -q login_shell; then
+    [ -r /etc/profile ] && source /etc/profile
+    if [ -r ~/.bash_profile ]; then
+        source ~/.bash_profile
+    elif [ -r ~/.bash_login ]; then
+        source ~/.bash_login
+    elif [ -r ~/.profile ]; then
+        source ~/.profile
+    fi
+else
+    [ -r ~/.bashrc ] && source ~/.bashrc
+fi
+:

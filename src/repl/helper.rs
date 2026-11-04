@@ -11,7 +11,9 @@ use rustyline::validate::{ValidationContext, ValidationResult, Validator};
 use rustyline::{Context, Helper};
 
 use super::words;
-use crate::completions::{Completion, CompletionManager};
+use crate::completions::{Completion, CompletionInput, CompletionManager, quote_replacement};
+use crate::exec::ShellSession;
+use tokio::sync::Mutex;
 
 /// Shell builtins recognized as valid commands.
 const SHELL_BUILTINS: &[&str] = &[
@@ -77,9 +79,13 @@ pub struct NoshHelper {
     completion_manager: Rc<CompletionManager>,
     syntax_highlighting: bool,
     command_cache: HashSet<String>,
+    shell: Option<Rc<Mutex<ShellSession>>>,
 }
 
 impl NoshHelper {
+    pub fn set_shell(&mut self, shell: Rc<Mutex<ShellSession>>) {
+        self.shell = Some(shell);
+    }
     pub fn new(completion_manager: Rc<CompletionManager>, syntax_highlighting: bool) -> Self {
         let command_cache = if syntax_highlighting {
             build_command_cache()
@@ -90,6 +96,7 @@ impl NoshHelper {
             completion_manager,
             syntax_highlighting,
             command_cache,
+            shell: None,
         }
     }
 }
@@ -150,6 +157,17 @@ const SLASH_COMMANDS: &[(&str, &str)] = &[
 impl Completer for NoshHelper {
     type Candidate = NoshCandidate;
 
+    fn update(
+        &self,
+        line: &mut rustyline::line_buffer::LineBuffer,
+        start: usize,
+        elected: &str,
+        changes: &mut rustyline::Changeset,
+    ) {
+        let end = crate::completions::word_end(line.as_str(), start);
+        line.replace(start..end, elected, changes);
+    }
+
     fn complete(
         &self,
         line: &str,
@@ -162,15 +180,80 @@ impl Completer for NoshHelper {
         }
 
         // Check if we're completing a slash command
-        if line.starts_with('/') {
+        if line[..pos].starts_with('/')
+            && !line[..pos].contains(char::is_whitespace)
+            && SLASH_COMMANDS
+                .iter()
+                .any(|(name, _)| name.starts_with(&line[..pos]))
+        {
             return self.complete_slash_command(line, pos);
         }
-
-        let completions = self.completion_manager.complete(line, pos);
-        let start = find_word_start(line, pos);
-
-        let candidates = completions.into_iter().map(NoshCandidate::new).collect();
-
+        let input = CompletionInput::parse(line, pos);
+        if input.comment {
+            return Ok((pos, vec![]));
+        }
+        if let Some(shell) = &self.shell
+            && let Ok(session) = shell.try_lock()
+        {
+            self.completion_manager
+                .set_environment(session.environment());
+        }
+        let has_toml = input
+            .command()
+            .is_some_and(|command| self.completion_manager.has_definition(command));
+        let (start, completions, quote) = if !has_toml && let Some(shell) = &self.shell {
+            // Rustyline's callback is synchronous; the live shell is asynchronous.
+            // block_in_place leaves Tokio workers free for bounded shell operations.
+            let native = tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(async {
+                    shell
+                        .lock()
+                        .await
+                        .complete_native(&line[input.segment_start..], pos - input.segment_start)
+                        .await
+                })
+            });
+            match native {
+                Ok(result) => (
+                    input.segment_start + result.insertion_index,
+                    result.candidates.into_iter().map(Completion::new).collect(),
+                    !result.options.no_autoquote_filenames,
+                ),
+                Err(_) => (input.start, vec![], true),
+            }
+        } else {
+            (
+                input.start,
+                self.completion_manager.complete(line, pos),
+                true,
+            )
+        };
+        let raw = &line[start..pos];
+        let variable_completion = raw.starts_with('$') && !raw.contains('/');
+        let candidates = completions
+            .into_iter()
+            .map(|mut completion| {
+                let path = if let Some(rest) = completion.text.strip_prefix("~/") {
+                    dirs::home_dir().unwrap_or_default().join(rest)
+                } else {
+                    std::path::PathBuf::from(&completion.text)
+                };
+                if path.is_dir() && !completion.text.ends_with('/') {
+                    completion.text.push('/');
+                }
+                let mut candidate = NoshCandidate::new(completion);
+                if quote && !variable_completion {
+                    candidate.text = quote_replacement(&candidate.text, raw);
+                    if candidate.text.ends_with('/')
+                        && pos < line.len()
+                        && raw.starts_with(['\'', '"'])
+                    {
+                        candidate.text.push(raw.chars().next().unwrap());
+                    }
+                }
+                candidate
+            })
+            .collect();
         Ok((start, candidates))
     }
 }
@@ -234,7 +317,7 @@ fn find_word_start_simple(line: &str, pos: usize) -> usize {
 impl Hinter for NoshHelper {
     type Hint = String;
 
-    fn hint(&self, line: &str, pos: usize, _ctx: &Context<'_>) -> Option<Self::Hint> {
+    fn hint(&self, line: &str, pos: usize, ctx: &Context<'_>) -> Option<Self::Hint> {
         // Only show hint if cursor is at end of line
         if pos != line.len() {
             return None;
@@ -268,17 +351,15 @@ impl Hinter for NoshHelper {
                 .map(|w| w[current_word.len()..].to_string());
         }
 
-        // Get completions for shell commands
-        let completions = self.completion_manager.complete(line, pos);
-
-        // Find completion that starts with current word
-        let word_start = find_word_start(line, pos);
-        let current_word = &line[word_start..pos];
-
-        completions
-            .into_iter()
-            .find(|c| c.text.starts_with(current_word) && c.text.len() > current_word.len())
-            .map(|c| c.text[current_word.len()..].to_string())
+        use rustyline::history::SearchDirection;
+        let history = ctx.history();
+        let last = history.len().checked_sub(1)?;
+        history
+            .starts_with(line, last, SearchDirection::Reverse)
+            .ok()
+            .flatten()
+            .filter(|result| result.entry.len() > line.len())
+            .map(|result| result.entry[line.len()..].to_string())
     }
 }
 
@@ -343,39 +424,40 @@ impl Validator for NoshHelper {
         let line = ctx.input();
 
         // Skip quote validation for AI queries - they're natural language, not shell commands
-        if line.starts_with('?') || line.starts_with('/') {
+        if line.starts_with('?')
+            || SLASH_COMMANDS
+                .iter()
+                .any(|(command, _)| line.split_whitespace().next() == Some(*command))
+        {
             return Ok(ValidationResult::Valid(None));
         }
 
-        // Check for unclosed quotes
-        let mut in_single = false;
-        let mut in_double = false;
-        let mut escaped = false;
+        Ok(validate_shell_input(line))
+    }
+}
 
-        for c in line.chars() {
-            if escaped {
-                escaped = false;
-                continue;
-            }
-
-            match c {
-                '\\' => escaped = true,
-                '\'' if !in_double => in_single = !in_single,
-                '"' if !in_single => in_double = !in_double,
-                _ => {}
-            }
-        }
-
-        if in_single || in_double {
-            return Ok(ValidationResult::Incomplete);
-        }
-
-        // Check for line continuation
-        if line.ends_with('\\') {
-            return Ok(ValidationResult::Incomplete);
-        }
-
-        Ok(ValidationResult::Valid(None))
+fn validate_shell_input(line: &str) -> ValidationResult {
+    let continued = brush_parser::tokenize_str(line).ok().is_some_and(|tokens| {
+        tokens.last().is_some_and(|token| {
+            token
+                .to_str()
+                .chars()
+                .rev()
+                .take_while(|ch| *ch == '\\')
+                .count()
+                % 2
+                == 1
+        })
+    });
+    let mut parser = brush_parser::Parser::new(
+        std::io::BufReader::new(line.as_bytes()),
+        &Default::default(),
+    );
+    match parser.parse_program() {
+        Ok(_) if !continued => ValidationResult::Valid(None),
+        Ok(_) | Err(brush_parser::ParseError::ParsingAtEndOfInput) => ValidationResult::Incomplete,
+        Err(brush_parser::ParseError::Tokenizing { .. }) => ValidationResult::Incomplete,
+        Err(error) => ValidationResult::Invalid(Some(error.to_string())),
     }
 }
 
@@ -550,44 +632,131 @@ impl NoshHelper {
 }
 
 /// Find the start of the current word being completed.
+#[cfg(test)]
 fn find_word_start(line: &str, pos: usize) -> usize {
-    let line = &line[..pos];
-    let bytes = line.as_bytes();
-
-    let mut start = pos;
-    let mut in_quote = false;
-    let mut quote_char = b'"';
-
-    // Walk back from cursor to find word start
-    while start > 0 {
-        let c = bytes[start - 1];
-
-        if in_quote {
-            if c == quote_char {
-                in_quote = false;
-            }
-            start -= 1;
-            continue;
-        }
-
-        match c {
-            b'"' | b'\'' => {
-                in_quote = true;
-                quote_char = c;
-                start -= 1;
-            }
-            b' ' | b'\t' => break,
-            _ => start -= 1,
-        }
-    }
-
-    start
+    CompletionInput::parse(line, pos).start
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use rustyline::completion::Candidate;
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn toml_precedes_bash_and_empty_matches_do_not_fall_through() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("auditcmd.toml"),
+            "[completions.auditcmd.subcommands]\ntoml = 'TOML choice'\n",
+        )
+        .unwrap();
+        let manager = Rc::new(CompletionManager::for_paths(vec![dir.path().into()]));
+        let mut helper = NoshHelper::new(manager, false);
+        let shell = Rc::new(Mutex::new(
+            ShellSession::configured(true, false, false, "nosh".into(), vec![])
+                .await
+                .unwrap(),
+        ));
+        shell
+            .lock()
+            .await
+            .execute_no_job_control("complete -W 'bash' auditcmd; complete -W 'beta bravo' bashcmd")
+            .await
+            .unwrap();
+        helper.set_shell(shell);
+        let history = rustyline::history::DefaultHistory::new();
+        let ctx = Context::new(&history);
+        assert_eq!(
+            helper.complete("auditcmd ", 9, &ctx).unwrap().1[0].replacement(),
+            "toml"
+        );
+        assert!(
+            helper
+                .complete("auditcmd b", 10, &ctx)
+                .unwrap()
+                .1
+                .is_empty()
+        );
+        let line = "echo ok | bashcmd b";
+        let (start, choices) = helper.complete(line, line.len(), &ctx).unwrap();
+        assert_eq!(&line[start..], "b");
+        assert_eq!(
+            choices.iter().map(|c| c.replacement()).collect::<Vec<_>>(),
+            ["beta", "bravo"]
+        );
+        assert!(
+            helper
+                .complete("echo $PA", 8, &ctx)
+                .unwrap()
+                .1
+                .iter()
+                .any(|c| c.replacement() == "$PATH")
+        );
+    }
+
+    #[test]
+    fn file_completion_handles_spaces_absolute_paths_and_directories() {
+        let dir = tempfile::tempdir().unwrap();
+        for name in ["xyz.foo", "xyz.foo.bar", "my report.txt"] {
+            std::fs::write(dir.path().join(name), "").unwrap();
+        }
+        std::fs::create_dir(dir.path().join("docs")).unwrap();
+        std::fs::write(dir.path().join("docs/inside.txt"), "").unwrap();
+        std::os::unix::fs::symlink(dir.path().join("docs"), dir.path().join("link")).unwrap();
+        let helper = NoshHelper::new(Rc::new(CompletionManager::for_paths(vec![])), false);
+        let history = rustyline::history::DefaultHistory::new();
+        let ctx = Context::new(&history);
+        for prefix in [
+            format!("cat {}/my", dir.path().display()),
+            format!("cat \"{}/my", dir.path().display()),
+        ] {
+            let (start, choices) = helper.complete(&prefix, prefix.len(), &ctx).unwrap();
+            let completed = format!("{}{}", &prefix[..start], choices[0].replacement());
+            assert_eq!(shell_words::split(&completed).unwrap().len(), 2);
+        }
+        let line = format!("{}/xyz", dir.path().display());
+        assert_eq!(helper.complete(&line, line.len(), &ctx).unwrap().1.len(), 2);
+        let line = format!("cd {}/", dir.path().display());
+        let (_, choices) = helper.complete(&line, line.len(), &ctx).unwrap();
+        assert_eq!(choices.len(), 2);
+        assert!(choices.iter().all(|c| c.replacement().ends_with('/')));
+        let line = format!("cat {}/docs", dir.path().display());
+        assert_eq!(
+            helper.complete(&line, line.len(), &ctx).unwrap().1[0].replacement(),
+            format!("{}/docs/", dir.path().display())
+        );
+    }
+
+    #[test]
+    fn grammar_validation_handles_compound_and_literal_input() {
+        for line in [
+            "sleep 60",
+            "echo $",
+            "echo a#b",
+            "echo '\\\\'",
+            "if true; then\n echo ok\nfi",
+            "echo foo\\\\",
+            "echo hi # comment \\",
+        ] {
+            assert!(
+                matches!(validate_shell_input(line), ValidationResult::Valid(_)),
+                "{line}"
+            );
+        }
+        for line in [
+            "if true; then",
+            "for x in a; do",
+            "echo \"hello",
+            "echo ok |",
+            "cat <<EOF\nhello",
+            "echo foo\\",
+        ] {
+            assert!(
+                matches!(validate_shell_input(line), ValidationResult::Incomplete),
+                "{line}"
+            );
+        }
+    }
 
     #[test]
     fn literal_hash_and_trailing_dollar_do_not_hang() {

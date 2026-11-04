@@ -26,8 +26,13 @@ impl ChildProcess {
         pid: Option<sys::process::ProcessId>,
         pgid: Option<sys::process::ProcessId>,
     ) -> Self {
+        let registration = child.id().and_then(crate::process_scope::register);
         Self {
-            exec_future: Box::pin(child.wait_with_output()),
+            exec_future: Box::pin(async move {
+                let result = child.wait_with_output().await;
+                drop(registration);
+                result
+            }),
             pid,
             pgid,
         }
